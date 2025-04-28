@@ -1,5 +1,5 @@
 /*
- * (c) Copyright Ascensio System SIA 2010-2023
+ * (c) Copyright Ascensio System SIA 2010-2024
  *
  * This program is a free software product. You can redistribute it and/or
  * modify it under the terms of the GNU Affero General Public License (AGPL)
@@ -33,8 +33,7 @@
 /**
  *  Draw.js
  *
- *  Created by Julia Radzhabova on 28.03.2023
- *  Copyright (c) 2023 Ascensio System SIA. All rights reserved.
+ *  Created on 28.03.2023
  *
  */
 
@@ -44,10 +43,7 @@ Common.Controllers = Common.Controllers || {};
 
 define([
     'core',
-    'common/main/lib/view/Draw',
-    'common/main/lib/view/PasswordDialog',
-    'common/main/lib/view/SignDialog',
-    'common/main/lib/view/SignSettingsDialog'
+    'common/main/lib/view/Draw'
 ], function () {
     'use strict';
 
@@ -75,8 +71,14 @@ define([
         onLaunch: function () {
             this._state = {};
 
-            Common.NotificationCenter.on('app:ready', this.onAppReady.bind(this));
-            Common.NotificationCenter.on('api:disconnect', _.bind(this.onCoAuthoringDisconnect, this));
+            Common.NotificationCenter.on({
+                'draw-tool:pen': this.startDraw.bind(this),
+                'draw-tool:eraser': this.startEraser.bind(this),
+                'draw-tool:select': this.stopDraw.bind(this),
+                'draw-tool:erase-all': this.onEraseAllInksOnSlide.bind(this),
+                'app:ready': this.onAppReady.bind(this),
+                'api:disconnect': _.bind(this.onCoAuthoringDisconnect, this)
+            });
         },
 
         setConfig: function (data, api) {
@@ -111,11 +113,17 @@ define([
 
         onInkDrawerStop: function() {
             this.view && this.view.depressButtons();
+            Common.NotificationCenter.trigger('draw:stop', this.view);
         },
 
         onSelect: function(btn){
             this.api && this.api.asc_StopInkDrawer();
             Common.NotificationCenter.trigger('edit:complete', this.view);
+        },
+
+        startEraser: function() {
+            this.api && this.api.asc_StartInkEraser();
+            Common.NotificationCenter.trigger('draw:start', this.view);
         },
 
         onEraser: function(btn){
@@ -124,10 +132,30 @@ define([
                     this.api.asc_StopInkDrawer();
                 else {
                     this.view.depressButtons(btn);
-                    this.api.asc_StartInkEraser();
-                    Common.NotificationCenter.trigger('draw:start', this.view);
+                    this.startEraser();
                 }
             }
+        },
+
+        onEraseAllInksOnSlide: function() {
+            this.api && this.api.asc_EraseAllInksOnSlide();
+        },
+
+        startDraw: function(options) {
+            if (!this.api) { return; }
+            var stroke = new Asc.asc_CStroke();
+            stroke.put_type( Asc.c_oAscStrokeType.STROKE_COLOR);
+            stroke.put_color(Common.Utils.ThemeColor.getRgbColor(options.color));
+            stroke.asc_putPrstDash(Asc.c_oDashType.solid);
+            stroke.put_width(options.size);
+            stroke.put_transparent(options.opacity * 2.55);
+            this.api.asc_StartDrawInk(stroke, options.index);
+            Common.NotificationCenter.trigger('draw:start', this.view);
+        },
+
+        stopDraw: function() {
+            this.api && this.api.asc_StopInkDrawer();
+            Common.NotificationCenter.trigger('draw:stop', this.view);
         },
 
         onDrawPen: function(btn){
@@ -136,16 +164,10 @@ define([
                     this.api.asc_StopInkDrawer();
                 else {
                     this.view.depressButtons(btn);
-
-                    var options = btn.options.penOptions;
-                    var stroke = new Asc.asc_CStroke();
-                    stroke.put_type( Asc.c_oAscStrokeType.STROKE_COLOR);
-                    stroke.put_color(Common.Utils.ThemeColor.getRgbColor(options.color));
-                    stroke.asc_putPrstDash(Asc.c_oDashType.solid);
-                    stroke.put_width(options.size.arr[options.size.idx]);
-                    stroke.put_transparent(options.opacity * 2.55);
-                    this.api.asc_StartDrawInk(stroke, options.idx);
-                    Common.NotificationCenter.trigger('draw:start', this.view);
+                    var options = _.clone(btn.options.penOptions);
+                    options.size = options.size.arr[options.size.idx];
+                    options.index = options.idx;
+                    this.startDraw(options);
                 }
             }
         },

@@ -1,5 +1,5 @@
 /*
- * (c) Copyright Ascensio System SIA 2010-2023
+ * (c) Copyright Ascensio System SIA 2010-2024
  *
  * This program is a free software product. You can redistribute it and/or
  * modify it under the terms of the GNU Affero General Public License (AGPL)
@@ -30,7 +30,6 @@
  *
  */
 /**
- * User: Julia.Svinareva
  * Date: 23.08.2021
  */
 
@@ -133,9 +132,11 @@ define([
         show: function () {
             Common.UI.BaseView.prototype.show.call(this,arguments);
             this.fireEvent('show', this );
+            Common.UI.TooltipManager.showTip('selectPages');
         },
 
         hide: function () {
+            Common.UI.TooltipManager.closeTip('selectPages');
             Common.UI.BaseView.prototype.hide.call(this,arguments);
             this.fireEvent('hide', this );
         },

@@ -19,7 +19,7 @@ const PageListMove = props => {
             <Page>
                 <Navbar title={t('Statusbar.textMoveBefore')}/>
                 <List>
-                    <ListGroup>
+                    <ListGroup style={Device.phone ? { paddingBottom: '44px' } : undefined}>
                         { allSheets.map((model, index) => 
                             model.hidden ? null : 
                             <ListItem 
@@ -218,13 +218,13 @@ const StatusbarView = inject('storeAppOptions', 'storeWorksheets', 'users')(obse
 
     return (
         <Fragment>
-            <View id="idx-statusbar" className="statusbar" style={viewStyle}>
+            <View id="idx-statusbar" className="statusbar" style={{ marginBottom: storeAppOptions.isDrawMode ? 'calc(44px + env(safe-area-inset-bottom) + env(keyboard-inset-top))' : undefined, ...viewStyle }}>
                 {isEdit &&
-                    <div id="idx-box-add-tab" className={`${isDisconnected || isWorkbookLocked || isProtectedWorkbook ? 'disabled box-tab' : 'box-tab'}`}>
+                    <div id="idx-box-add-tab" className={`${isDisconnected || isWorkbookLocked ? 'disabled box-tab' : 'box-tab'}`}>
                         <Link href={false} id="idx-btn-addtab" className={`tab${isDisabledEditSheet || isDisconnected || isWorkbookLocked || isProtectedWorkbook  ? ' disabled' : ''}`} onClick={props.onAddTabClicked}>
                             <Icon className={`icon icon-plus ${isAndroid ? 'bold' : ''}`}/>
                         </Link>
-                        <Link href={false} id="idx-btn-all-list-tab" className={`tab${isDisabledEditSheet || isDisconnected || isWorkbookLocked || isProtectedWorkbook  ? ' disabled' : ''}`} onClick={(e) => f7.popover.open('#idx-all-list', e.target)}>
+                        <Link href={false} id="idx-btn-all-list-tab" className={`tab${isDisabledEditSheet || isDisconnected || isWorkbookLocked ? ' disabled' : ''}`} onClick={(e) => f7.popover.open('#idx-all-list', e.target)}>
                             <Icon className={`icon icon-list ${isAndroid ? 'bold' : ''}`}/>
                         </Link>
                     </div>

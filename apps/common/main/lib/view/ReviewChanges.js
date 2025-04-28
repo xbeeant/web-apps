@@ -1,5 +1,5 @@
 /*
- * (c) Copyright Ascensio System SIA 2010-2023
+ * (c) Copyright Ascensio System SIA 2010-2024
  *
  * This program is a free software product. You can redistribute it and/or
  * modify it under the terms of the GNU Affero General Public License (AGPL)
@@ -34,8 +34,7 @@
  *
  *  View
  *
- *  Created by Julia.Radzhabova on 05.08.15
- *  Copyright (c) 2018 Ascensio System SIA. All rights reserved.
+ *  Created on 05.08.15
  *
  */
 
@@ -63,9 +62,10 @@ define([
         hasCoeditingUsers: 'has-coediting-users',
         previewReviewMode: 'preview-review-mode', // display mode on Collaboration tab
         viewFormMode:   'view-form-mode', // view form mode on Forms tab
-        viewMode:       'view-mode', // view mode on disconnect, version history etc (used for locking buttons not in toolbar)
+        viewMode:       'view-mode', // view mode on disconnect, version history etc (used for locking buttons not in toolbar) or view mode from header mode button (for toolbar)
         hideComments:   'hide-comments', // no live comments and left panel is closed
-        cantShare: 'cant-share'
+        cantShare: 'cant-share',
+        customLock: 'custom-lock' // for custom buttons in toolbar
     };
     for (var key in enumLock) {
         if (enumLock.hasOwnProperty(key)) {
@@ -75,7 +75,7 @@ define([
 
     Common.Views.ReviewChanges = Common.UI.BaseView.extend(_.extend((function(){
         var template =
-            '<section id="review-changes-panel" class="panel" data-tab="review">' +
+            '<section id="review-changes-panel" class="panel" data-tab="review" role="tabpanel" aria-labelledby="review">' +
                 '<div class="group no-group-mask review">' +
                     '<span id="slot-btn-sharing" class="btn-slot text x-huge"></span>' +
                     '<span id="slot-btn-coauthmode" class="btn-slot text x-huge"></span>' +
@@ -111,6 +111,10 @@ define([
                 '<div class="separator long chat"></div>' +
                 '<div class="group no-group-mask review form-view">' +
                     '<span id="slot-btn-history" class="btn-slot text x-huge"></span>' +
+                '</div>' +
+                '<div class="separator long history"></div>' +
+                '<div class="group">' +
+                    '<span id="slot-btn-mailrecepients" class="btn-slot text x-huge" data-layout-name="toolbar-collaboration-mailmerge"></span>' +
                 '</div>' +
             '</section>';
 
@@ -247,6 +251,11 @@ define([
                     me.fireEvent('comment:resolveComments', [item.value]);
                 });
             }
+
+            this.mnuMailRecepients && this.mnuMailRecepients.on('item:click', function(menu, item, e) {
+                    me.fireEvent('collaboration:mailmerge', [item.value]);
+                });
+
             Common.NotificationCenter.on('protect:doclock', function (e) {
                 me.fireEvent('protect:update');
             });
@@ -272,7 +281,8 @@ define([
                         caption: this.txtAccept,
                         split: !this.appConfig.canUseReviewPermissions,
                         iconCls: 'toolbar__icon btn-review-save',
-                        lock: [_set.reviewChangelock, _set.isReviewOnly, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.docLockReview],
+                        lock: [_set.reviewChangelock, _set.isReviewOnly, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.docLockReview, _set.viewMode],
+                        action: 'review-accept',
                         dataHint: '1',
                         dataHintDirection: 'bottom',
                         dataHintOffset: 'small'
@@ -284,7 +294,8 @@ define([
                         caption: this.txtReject,
                         split: !this.appConfig.canUseReviewPermissions,
                         iconCls: 'toolbar__icon btn-review-deny',
-                        lock: [_set.reviewChangelock, _set.isReviewOnly, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.docLockReview],
+                        lock: [_set.reviewChangelock, _set.isReviewOnly, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.docLockReview, _set.viewMode],
+                        action: 'review-reject',
                         dataHint: '1',
                         dataHintDirection: 'bottom',
                         dataHintOffset: 'small'
@@ -297,7 +308,8 @@ define([
                             caption: this.txtCompare,
                             split: true,
                             iconCls: 'toolbar__icon btn-compare',
-                            lock: [_set.hasCoeditingUsers, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments],
+                            lock: [_set.hasCoeditingUsers, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.viewMode],
+                            action: 'compare-document',
                             dataHint: '1',
                             dataHintDirection: 'bottom',
                             dataHintOffset: 'small'
@@ -309,7 +321,8 @@ define([
                             caption: this.txtCombine,
                             split: true,
                             iconCls: 'toolbar__icon btn-combine',
-                            lock: [_set.hasCoeditingUsers, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments],
+                            lock: [_set.hasCoeditingUsers, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.viewMode],
+                            action: 'combine-document',
                             dataHint: '1',
                             dataHintDirection: 'bottom',
                             dataHintOffset: 'small'
@@ -319,9 +332,10 @@ define([
                     this.btnTurnOn = new Common.UI.Button({
                         cls: 'btn-toolbar x-huge icon-top',
                         iconCls: 'toolbar__icon btn-big-ic-review',
-                        lock: [_set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.docLockReview],
+                        lock: [_set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.docLockReview, _set.viewMode],
                         caption: this.txtTurnon,
                         split: !this.appConfig.isReviewOnly,
+                        action: 'track-changes',
                         enableToggle: true,
                         dataHint: '1',
                         dataHintDirection: 'bottom',
@@ -334,7 +348,7 @@ define([
                     this.btnPrev = new Common.UI.Button({
                         cls: 'btn-toolbar x-huge icon-top',
                         iconCls: 'toolbar__icon btn-review-prev',
-                        lock: [_set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments],
+                        lock: [_set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.viewMode, _set.viewMode],
                         caption: this.txtPrev,
                         dataHint: '1',
                         dataHintDirection: 'bottom',
@@ -345,7 +359,7 @@ define([
                     this.btnNext = new Common.UI.Button({
                         cls: 'btn-toolbar x-huge icon-top',
                         iconCls: 'toolbar__icon btn-review-next',
-                        lock: [_set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments],
+                        lock: [_set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.viewMode, _set.viewMode],
                         caption: this.txtNext,
                         dataHint: '1',
                         dataHintDirection: 'bottom',
@@ -361,7 +375,7 @@ define([
                         this.btnReviewView = new Common.UI.Button({
                             cls: 'btn-toolbar x-huge icon-top',
                             iconCls: 'toolbar__icon btn-ic-reviewview',
-                            lock: [_set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments],
+                            lock: [_set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.viewMode],
                             caption: this.txtView,
                             menu: new Common.UI.Menu({
                                 cls: 'ppm-toolbar',
@@ -404,6 +418,7 @@ define([
                                     }
                                 ]
                             }),
+                            action: 'review-display-mode',
                             dataHint: '1',
                             dataHintDirection: 'bottom',
                             dataHintOffset: 'small'
@@ -429,9 +444,10 @@ define([
                     this.btnCoAuthMode = new Common.UI.Button({
                         cls: 'btn-toolbar x-huge icon-top',
                         iconCls: 'toolbar__icon btn-ic-coedit',
-                        lock: [_set.viewFormMode, _set.lostConnect, _set.docLockView],
+                        lock: [_set.viewFormMode, _set.lostConnect, _set.docLockView, _set.viewMode],
                         caption: this.txtCoAuthMode,
                         menu: true,
+                        action: 'co-edit-mode',
                         dataHint: '1',
                         dataHintDirection: 'bottom',
                         dataHintOffset: 'small'
@@ -476,7 +492,8 @@ define([
                         caption: this.txtCommentRemove,
                         split: true,
                         iconCls: 'toolbar__icon btn-rem-comment',
-                        lock: [_set.previewReviewMode, _set.viewFormMode, _set.hideComments, _set['Objects'], _set.lostConnect, _set.docLockView, _set.docLockForms],
+                        lock: [_set.previewReviewMode, _set.viewFormMode, _set.hideComments, _set['Objects'], _set.lostConnect, _set.docLockView, _set.docLockForms, _set.viewMode, _set.slideMasterMode],
+                        action: 'comment-remove',
                         dataHint: '1',
                         dataHintDirection: 'bottom',
                         dataHintOffset: 'small'
@@ -487,13 +504,38 @@ define([
                         caption: this.txtCommentResolve,
                         split: true,
                         iconCls: 'toolbar__icon btn-resolve-all',
-                        lock: [_set.previewReviewMode, _set.viewFormMode, _set.hideComments, _set['Objects'], _set.lostConnect, _set.docLockView, _set.docLockForms],
+                        lock: [_set.previewReviewMode, _set.viewFormMode, _set.hideComments, _set['Objects'], _set.lostConnect, _set.docLockView, _set.docLockForms, _set.viewMode, _set.slideMasterMode],
+                        action: 'comment-resolve',
                         dataHint: '1',
                         dataHintDirection: 'bottom',
                         dataHintOffset: 'small'
                     });
                     this.lockedControls.push(this.btnCommentResolve);
                 }
+
+                if (this.appConfig.isEdit && this.appConfig.canCoAuthoring && this.appConfig.canUseMailMerge) {
+                    this.btnMailRecepients = new Common.UI.Button({
+                        id: 'id-toolbar-btn-mailrecepients',
+                        cls: 'btn-toolbar x-huge icon-top',
+                        iconCls: 'toolbar__icon btn-mailmerge',
+                        lock: [_set.mmergeLock, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.viewMode],
+                        caption: this.txtMailMerge,
+                        dataHint: '1',
+                        dataHintDirection: 'bottom',
+                        dataHintOffset: 'small',
+                        menu: new Common.UI.Menu({
+                            items: [
+                                {caption: this.mniMMFromFile, value: 'file'},
+                                {caption: this.mniMMFromUrl, value: 'url'},
+                                {caption: this.mniMMFromStorage, value: 'storage'}
+                            ]
+                        }),
+                        action: 'mail-merge'
+                    });
+                    this.mnuMailRecepients = this.btnMailRecepients.menu;
+                    this.lockedControls.push(this.btnMailRecepients);
+                }
+                Common.UI.LayoutManager.addControls(this.lockedControls);
             },
 
             render: function (el) {
@@ -587,8 +629,8 @@ define([
                                     {caption: me.mniFromFile, value: 'file'},
                                     {caption: me.mniFromUrl, value: 'url'},
                                     {caption: me.mniFromStorage, value: 'storage'}
-                                    // ,{caption: '--'},
-                                    // {caption: me.mniSettings, value: 'settings'}
+                                    ,{caption: '--'},
+                                    {caption: me.mniSettings, value: 'settings'}
                                 ]
                             }));
                             me.btnCompare.menu.items[2].setVisible(me.appConfig.canRequestSelectDocument || me.appConfig.canRequestCompareFile || me.appConfig.fileChoiceUrl && me.appConfig.fileChoiceUrl.indexOf("{documentType}")>-1);
@@ -602,6 +644,8 @@ define([
                                     {caption: me.mniFromFile, value: 'file'},
                                     {caption: me.mniFromUrl, value: 'url'},
                                     {caption: me.mniFromStorage, value: 'storage'}
+                                    ,{caption: '--'},
+                                    {caption: me.mniSettings, value: 'settings'}
                                 ]
                             }));
                             me.btnCombine.menu.items[2].setVisible(me.appConfig.canRequestSelectDocument || me.appConfig.fileChoiceUrl && me.appConfig.fileChoiceUrl.indexOf("{documentType}")>-1);
@@ -621,6 +665,7 @@ define([
                     me.btnSharing && me.btnSharing.updateHint(me.tipSharing);
                     me.btnHistory && me.btnHistory.updateHint(me.tipHistory);
                     me.btnChat && me.btnChat.updateHint(me.txtChat + Common.Utils.String.platformKey('Alt+Q', ' (' + (Common.Utils.isMac ? Common.Utils.String.textCtrl + '+' : '') + '{0})'));
+                    me.btnMailRecepients && me.btnMailRecepients.updateHint(me.tipMailRecepients);
                     if (me.btnCoAuthMode) {
                         me.btnCoAuthMode.setMenu(
                             new Common.UI.Menu({
@@ -700,6 +745,7 @@ define([
                         separator_review = !(config.canReview || config.canViewReview) ? me.$el.find('.separator.review') : '.separator.review',
                         separator_compare = !(config.canReview && config.canFeatureComparison) ? me.$el.find('.separator.compare') : '.separator.compare',
                         separator_chat = !me.btnChat ? me.$el.find('.separator.chat') : '.separator.chat',
+                        separator_history = !me.btnHistory ? me.$el.find('.separator.history') : '.separator.history',
                         separator_last;
 
                     if (typeof separator_sharing == 'object')
@@ -727,10 +773,20 @@ define([
                     else
                         separator_last = separator_chat;
 
-                    if (!me.btnHistory && separator_last)
+                    if (typeof separator_history == 'object')
+                        separator_history.hide().prev('.group').hide();
+                    else
+                        separator_last = separator_history;
+
+                    if ((!me.btnMailRecepients || !Common.UI.LayoutManager.isElementVisible('toolbar-collaboration-mailmerge')) && separator_last)
                         me.$el.find(separator_last).hide();
 
-                    Common.NotificationCenter.trigger('tab:visible', 'review', (config.isEdit || config.canViewReview || me.canComments) && Common.UI.LayoutManager.isElementVisible('toolbar-collaboration'));
+                    var visible = (config.isEdit || config.canViewReview || me.canComments) && Common.UI.LayoutManager.isElementVisible('toolbar-collaboration');
+                    Common.NotificationCenter.trigger('tab:visible', 'review', visible);
+                    if (Common.Utils.InternalSettings.get('toolbar-active-tab') && visible) { // collaboration tab has hign priority in view mode
+                        Common.Utils.InternalSettings.set('toolbar-active-tab', null);
+                        Common.NotificationCenter.trigger('tab:set-active', 'review');
+                    }
                     setEvents.call(me);
                 });
             },
@@ -755,6 +811,7 @@ define([
                 this.btnChat && this.btnChat.render(this.$el.find('#slot-btn-chat'));
                 this.btnCommentRemove && this.btnCommentRemove.render(this.$el.find('#slot-comment-remove'));
                 this.btnCommentResolve && this.btnCommentResolve.render(this.$el.find('#slot-comment-resolve'));
+                this.btnMailRecepients && this.btnMailRecepients.render(this.$el.find('#slot-btn-mailrecepients'));
 
                 return this.$el;
             },
@@ -803,6 +860,7 @@ define([
                                 toggleGroup: 'menuTurnReviewStb'
                             }
                         ]}),
+                        action: 'track-changes',
                         dataHint: '0',
                         dataHintDirection: 'top',
                         dataHintOffset: '2, -16'
@@ -810,6 +868,7 @@ define([
 
                     this.btnsTurnReview.push(button);
                     this.lockedControls.push(button);
+                    Common.UI.LayoutManager.addControls(button);
                     return button;
                 } else
                 if ( type == 'spelling' ) {
@@ -827,6 +886,7 @@ define([
                     });
                     this.btnsSpelling.push(button);
                     this.lockedControls.push(button);
+                    Common.UI.LayoutManager.addControls(button);
                     return button;
                 } else if (type == 'doclang' && parent == 'statusbar' ) {
                     button = new Common.UI.Button({
@@ -841,6 +901,7 @@ define([
                     });
                     this.btnsDocLang.push(button);
                     this.lockedControls.push(button);
+                    Common.UI.LayoutManager.addControls(button);
                     Common.Utils.lockControls(Common.enumLock.noSpellcheckLangs, true, {array: [button]});
                     return button;
                 }
@@ -866,6 +927,7 @@ define([
                         button.menu.items[3].setChecked(!state && !!global, true);
                     }
                 }, this);
+                Common.NotificationCenter.trigger('doc:mode-apply', state ? 'review' : 'edit', false);
             },
 
             markChanges: function(status) {
@@ -980,14 +1042,18 @@ define([
             txtMarkupSimpleCap: 'Simple Markup',
             txtMarkupSimple: 'All changes {0}<br>Turn off balloons',
             txtEditing: 'Editing',
-            txtPreview: 'Preview'
+            txtPreview: 'Preview',
+            txtMailMerge: 'Mail Merge',
+            mniMMFromFile: 'From File',
+            mniMMFromUrl: 'From URL',
+            mniMMFromStorage: 'From Storage',
+            tipMailRecepients: 'Mail Merge'
         }
     }()), Common.Views.ReviewChanges || {}));
 
     Common.Views.ReviewChangesDialog = Common.UI.Window.extend(_.extend({
         options: {
             width       : 330,
-            height      : 90,
             title       : 'Review Changes',
             modal       : false,
             cls         : 'review-changes modal-dlg',
@@ -1046,7 +1112,7 @@ define([
                 caption     : this.txtAccept,
                 split       : true,
                 disabled    : this.mode.isReviewOnly || this.docProtection.isReviewOnly || !!Common.Utils.InternalSettings.get(this.appPrefix + "accept-reject-lock"),
-                lock        : [_set.reviewChangelock, _set.isReviewOnly, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.docLockReview],
+                lock        : [_set.reviewChangelock, _set.isReviewOnly, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.docLockReview, _set.viewMode],
                 menu        : this.mode.canUseReviewPermissions ? false : new Common.UI.Menu({
                     items: [
                         this.mnuAcceptCurrent = new Common.UI.MenuItem({
@@ -1066,7 +1132,7 @@ define([
                 cls         : 'btn-toolbar',
                 caption     : this.txtReject,
                 split       : true,
-                lock        : [_set.reviewChangelock, _set.isReviewOnly, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.docLockReview],
+                lock        : [_set.reviewChangelock, _set.isReviewOnly, _set.previewReviewMode, _set.viewFormMode, _set.lostConnect, _set.docLockView, _set.docLockForms, _set.docLockComments, _set.docLockReview, _set.viewMode],
                 menu        : this.mode.canUseReviewPermissions ? false : new Common.UI.Menu({
                     items: [
                         this.mnuRejectCurrent = new Common.UI.MenuItem({

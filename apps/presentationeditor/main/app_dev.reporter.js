@@ -1,5 +1,5 @@
 /*
- * (c) Copyright Ascensio System SIA 2010-2023
+ * (c) Copyright Ascensio System SIA 2010-2024
  *
  * This program is a free software product. You can redistribute it and/or
  * modify it under the terms of the GNU Affero General Public License (AGPL)
@@ -32,8 +32,7 @@
 /**
  *    app.js
  *
- *    Created by Maxim.Kadushkin on 17 July 2017
- *    Copyright (c) 2018 Ascensio System SIA. All rights reserved.
+ *    Created on 17 July 2017
  *
  */
 
@@ -51,9 +50,6 @@ require.config({
         allfonts        : '../../sdkjs/common/AllFonts'
     },
     shim: {
-        underscore: {
-            exports: '_'
-        },
         sdk: {
             deps: [
                 'jquery',
@@ -66,11 +62,13 @@ require.config({
     }
 });
 
+
 require([
+    'underscore',
     'socketio',
     'xregexp',
-    'underscore'
-], function () {
+], function (_) {
+    window._ = _
 
     var _msg_func = function(msg) {
         var data = msg.data, cmd;
@@ -90,10 +88,14 @@ require([
         window.attachEvent('onmessage', _msg_func); else
         window.addEventListener('message', _msg_func, false);
 
+    var lang = (/(?:&|^)lang=([^&]+)&?/i).exec(window.location.search.substring(1));
+    lang = lang && lang[1] ? lang[1].split(/[\-\_]/)[0].toLowerCase() : '';
+
     var api = new Asc.asc_docs_api({
         'id-view'  : 'editor_sdk',
         using      : 'reporter',
-        skin       : localStorage.getItem("ui-theme-id")
+        skin       : localStorage.getItem("ui-theme-id"),
+        'isRtlInterface': lang && (lang.lastIndexOf('ar', 0) === 0 || lang.lastIndexOf('he', 0) === 0)
     });
 
     var setDocumentTitle = function(title) {

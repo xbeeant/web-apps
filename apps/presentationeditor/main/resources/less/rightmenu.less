@@ -1,7 +1,4 @@
 
-.settings-panel {
-}
-
 .right-panel .settings-panel {
     label.input-label{
         vertical-align: baseline;
@@ -82,6 +79,10 @@
     &#id-image-settings {
         #image-button-270, #image-button-fliph,
         #image-button-90, #image-button-flipv {
+            display: inline-block;
+        }
+
+        #image-spin-transparency {
             display: inline-block;
         }
     }
@@ -176,6 +177,24 @@
 .item-gradient-separator {
     margin-right: 62px !important;
 }
+
+.item-shadow {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    div {
+        width: 32px;
+        height: 32px;
+        background: white;
+        border-radius: 1px;
+        border: 1px @icon-normal-ie solid;
+        border: 1px @icon-normal solid;
+    }
+}
+
 
 #signature-requested-sign,
 #signature-valid-sign,

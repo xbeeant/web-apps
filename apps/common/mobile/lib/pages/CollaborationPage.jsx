@@ -8,9 +8,7 @@ const CollaborationPage = props => {
     const { t } = useTranslation();
     const _t = t('Common.Collaboration', {returnObjects: true});
     const appOptions = props.storeAppOptions;
-    const documentInfo = props.storeDocumentInfo;
-    const dataDoc = documentInfo && documentInfo.dataDoc;
-    const fileType = dataDoc && dataDoc.fileType;
+    const isForm = appOptions.isForm;
     const sharingSettingsUrl = appOptions.sharingSettingsUrl;
     const isViewer = appOptions.isViewer;
 
@@ -26,7 +24,7 @@ const CollaborationPage = props => {
                 }
             </Navbar>
             <List>
-                {(sharingSettingsUrl && fileType !== 'oform') &&
+                {(sharingSettingsUrl && !isForm) &&
                     <ListItem title={t('Common.Collaboration.textSharingSettings')} link="/sharing-settings/">
                         <Icon slot="media" icon="icon-sharing-settings"></Icon>
                     </ListItem>
@@ -62,6 +60,9 @@ switch (window.asceditor) {
         break;
     case 'cell':
         storeInfo = 'storeSpreadsheetInfo';
+        break;
+    case 'visio':
+        storeInfo = 'storeVisioInfo';
         break;
 }
 

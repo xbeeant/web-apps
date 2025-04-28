@@ -1,5 +1,5 @@
 /*
- * (c) Copyright Ascensio System SIA 2010-2023
+ * (c) Copyright Ascensio System SIA 2010-2024
  *
  * This program is a free software product. You can redistribute it and/or
  * modify it under the terms of the GNU Affero General Public License (AGPL)
@@ -32,26 +32,21 @@
 /**
  *  ParagraphSettingsAdvanced.js
  *
- *  Created by Julia Radzhabova on 2/21/14
- *  Copyright (c) 2018 Ascensio System SIA. All rights reserved.
+ *  Created on 2/21/14
  *
  */
 
-define([    'text!documenteditor/main/app/template/ParagraphSettingsAdvanced.template',
+define([
+    'text!documenteditor/main/app/template/ParagraphSettingsAdvanced.template',
+    'common/main/lib/component/TableStyler',
     'common/main/lib/view/AdvancedSettingsWindow',
-    'common/main/lib/component/MetricSpinner',
-    'common/main/lib/component/CheckBox',
-    'common/main/lib/component/ThemeColorPalette',
-    'common/main/lib/component/ColorButton',
-    'common/main/lib/component/ListView',
-    'common/main/lib/component/TableStyler'
 ], function (contentTemplate) {
     'use strict';
 
     DE.Views.ParagraphSettingsAdvanced = Common.Views.AdvancedSettingsWindow.extend(_.extend({
         options: {
             contentWidth: 370,
-            height: 415,
+            contentHeight: 330,
             toggleGroup: 'paragraph-adv-settings-group',
             storageName: 'de-para-settings-adv-category'
         },
@@ -134,11 +129,11 @@ define([    'text!documenteditor/main/app/template/ParagraphSettingsAdvanced.tem
             });
 
             this._arrTabLeader = [
-                { value: Asc.c_oAscTabLeader.None,      displayValue: this.textNone },
-                { value: Asc.c_oAscTabLeader.Dot,       displayValue: '....................' },
-                { value: Asc.c_oAscTabLeader.Hyphen,    displayValue: '-----------------' },
-                { value: Asc.c_oAscTabLeader.MiddleDot, displayValue: '·················' },
-                { value: Asc.c_oAscTabLeader.Underscore,displayValue: '__________' }
+                { value: Asc.c_oAscTabLeader.None,      cls: '', displayValue: this.textNone },
+                { value: Asc.c_oAscTabLeader.Dot,       cls: 'font-sans-serif', displayValue: '....................' },
+                { value: Asc.c_oAscTabLeader.Hyphen,    cls: 'font-sans-serif', displayValue: '-----------------' },
+                { value: Asc.c_oAscTabLeader.MiddleDot, cls: 'font-sans-serif', displayValue: '·················' },
+                { value: Asc.c_oAscTabLeader.Underscore,cls: 'font-sans-serif', displayValue: '__________' }
             ];
             this._arrKeyTabLeader = [];
             this._arrTabLeader.forEach(function(item) {
@@ -311,6 +306,22 @@ define([    'text!documenteditor/main/app/template/ParagraphSettingsAdvanced.tem
             this.cmbOutlinelevel.setValue(-1);
             this.cmbOutlinelevel.on('selected', _.bind(this.onOutlinelevelSelect, this));
 
+            this.rbDirLtr = new Common.UI.RadioBox({
+                el: $('#paragraphadv-dir-ltr'),
+                name        : 'text-dir',
+                labelText   : this.textDirLtr,
+                value: false
+            });
+            this.rbDirLtr.on('change', _.bind(this.onTextDirChange, this));
+
+            this.rbDirRtl = new Common.UI.RadioBox({
+                el: $('#paragraphadv-dir-rtl'),
+                name        : 'text-dir',
+                labelText   : this.textDirRtl,
+                value: true
+            });
+            this.rbDirRtl.on('change', _.bind(this.onTextDirChange, this));
+
             // Line & Page Breaks
 
             this.chBreakBefore = new Common.UI.CheckBox({
@@ -380,7 +391,6 @@ define([    'text!documenteditor/main/app/template/ParagraphSettingsAdvanced.tem
                 additionalAlign: this.menuAddAlign,
                 color: 'auto',
                 auto: true,
-                cls: 'move-focus',
                 takeFocusOnClose: true
             });
             this.colorsBorder = this.btnBorderColor.getPicker();
@@ -424,7 +434,6 @@ define([    'text!documenteditor/main/app/template/ParagraphSettingsAdvanced.tem
                 parentEl: $('#paragraphadv-back-color-btn'),
                 transparent: true,
                 additionalAlign: this.menuAddAlign,
-                cls: 'move-focus',
                 takeFocusOnClose: true
             });
             this.colorsBack = this.btnBackColor.getPicker();
@@ -608,13 +617,21 @@ define([    'text!documenteditor/main/app/template/ParagraphSettingsAdvanced.tem
             });
             this.cmbAlign.setValue(Asc.c_oAscTabType.Left);
 
-            this.cmbLeader = new Common.UI.ComboBox({
+            this.cmbLeader = new Common.UI.ComboBoxCustom({
                 el          : $('#paraadv-cmb-leader'),
                 style       : 'width: 108px;',
                 menuStyle   : 'min-width: 108px;',
                 editable    : false,
                 cls         : 'input-group-nr',
                 data        : this._arrTabLeader,
+                itemsTemplate: _.template([
+                    '<% _.each(items, function(item) { %>',
+                    '<li id="<%= item.id %>" data-value="<%- item.value %>" class="<%= item.cls %>"><a tabindex="-1" type="menuitem"><%= scope.getDisplayValue(item) %></a></li>',
+                    '<% }); %>',
+                ].join('')),
+                updateFormControl: function(record) {
+                    this._input && this._input.toggleClass('font-sans-serif', record.get('value')!==Asc.c_oAscTabLeader.None);
+                },
                 takeFocusOnClose: true
             });
             this.cmbLeader.setValue(Asc.c_oAscTabLeader.None);
@@ -713,15 +730,15 @@ define([    'text!documenteditor/main/app/template/ParagraphSettingsAdvanced.tem
         },
 
         getFocusedComponents: function() {
-            return [
+            return this.btnsCategory.concat([
                 this.cmbTextAlignment, this.cmbOutlinelevel, this.numIndentsLeft, this.numIndentsRight, this.cmbSpecial, this.numSpecialBy,
-                this.numSpacingBefore, this.numSpacingAfter, this.cmbLineRule, this.numLineHeight, this.chAddInterval, // 0 tab
+                this.numSpacingBefore, this.numSpacingAfter, this.cmbLineRule, this.numLineHeight, this.chAddInterval, this.rbDirLtr, this.rbDirRtl, // 0 tab
                 this.chBreakBefore, this.chKeepLines, this.chOrphan, this.chKeepNext, this.chLineNumbers, // 1 tab
-                this.cmbBorderSize, this.btnBorderColor].concat(this._btnsBorderPosition).concat([this.btnBackColor,  // 2 tab
+                this.cmbBorderSize, this.btnBorderColor]).concat(this._btnsBorderPosition).concat([this.btnBackColor,  // 2 tab
                 this.chStrike, this.chSubscript, this.chDoubleStrike, this.chSmallCaps, this.chSuperscript, this.chAllCaps, this.numSpacing, this.numPosition, // 3 tab
                 this.numDefaultTab, this.numTab, this.cmbAlign, this.cmbLeader, this.tabList, this.btnAddTab, this.btnRemoveTab, this.btnRemoveAll,// 4 tab
                 this.spnMarginTop, this.spnMarginLeft, this.spnMarginBottom, this.spnMarginRight // 5 tab
-            ]);
+            ]).concat(this.getFooterButtons());
         },
 
         onCategoryClick: function(btn, index, cmp, e) {
@@ -870,6 +887,12 @@ define([    'text!documenteditor/main/app/template/ParagraphSettingsAdvanced.tem
                 this.cmbSpecial.setValue(this.CurSpecial);
                 this.numSpecialBy.setValue(this.FirstLine!== null ? Math.abs(Common.Utils.Metric.fnRecalcFromMM(this.FirstLine)) : '', true);
 
+                value = props.asc_getRtlDirection();
+                if (value !== undefined) {
+                    this.rbDirRtl.setValue(value, true);
+                    this.rbDirLtr.setValue(!value, true);
+                }
+
                 this.cmbTextAlignment.setValue((props.get_Jc() !== undefined && props.get_Jc() !== null) ? props.get_Jc() : c_paragraphTextAlignment.LEFT, true);
 
                 this.chKeepLines.setValue((props.get_KeepLines() !== null && props.get_KeepLines() !== undefined) ? props.get_KeepLines() : 'indeterminate', true);
@@ -914,19 +937,7 @@ define([    'text!documenteditor/main/app/template/ParagraphSettingsAdvanced.tem
                     this.paragraphShade = 'transparent';
                 }
                 this.btnBackColor.setColor(this.paragraphShade);
-                if ( typeof(this.paragraphShade) == 'object' ) {
-                    var isselected = false;
-                    for (var i=0; i<10; i++) {
-                        if ( Common.Utils.ThemeColor.ThemeValues[i] == this.paragraphShade.effectValue ) {
-                            this.colorsBack.select(this.paragraphShade,true);
-                            isselected = true;
-                            break;
-                        }
-                    }
-                    if (!isselected) this.colorsBack.clearSelection();
-                } else
-                    this.colorsBack.select(this.paragraphShade,true);
-
+                Common.Utils.ThemeColor.selectPickerColorByEffect(this.paragraphShade, this.colorsBack);
                 this._UpdateBorders();
 
                 // Font
@@ -1485,6 +1496,12 @@ define([    'text!documenteditor/main/app/template/ParagraphSettingsAdvanced.tem
         onLigaturesSelect: function(combo, record) {
             if (this._changedProps) {
                 this._changedProps.put_Ligatures(record.value);
+            }
+        },
+
+        onTextDirChange: function(field, newValue, eOpts) {
+            if (newValue && this._changedProps) {
+                this._changedProps.asc_putRtlDirection(field.options.value);
             }
         },
 

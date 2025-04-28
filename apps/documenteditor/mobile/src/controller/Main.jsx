@@ -19,7 +19,8 @@ import PluginsController from '../../../../common/mobile/lib/controller/Plugins.
 import EncodingController from "./Encoding";
 import DropdownListController from "./DropdownList";
 import { Device } from '../../../../common/mobile/utils/device';
-
+import { processArrayScripts } from '../../../../common/mobile/utils/processArrayScripts.js';
+import '../../../../common/main/lib/util/LanguageInfo.js'
 @inject(
     "users",
     "storeAppOptions",
@@ -44,12 +45,91 @@ class MainController extends Component {
         this.LoadingDocument = -256;
         this.ApplyEditRights = -255;
         this.boxSdk = $$('#editor_sdk');
+        this.fallbackSdkTranslations = {
+            " -Section ": " -Section ",
+            "above": "above",
+            "below": "below",
+            "Caption": "Caption",
+            "Choose an item": "Choose an item",
+            "Click to load image": "Click to load image",
+            "Current Document": "Current Document",
+            "Diagram Title": "Chart Title",
+            "endnote text": "Endnote Text",
+            "Enter a date": "Enter a date",
+            "Error! Bookmark not defined": "Error! Bookmark not defined.",
+            "Error! Main Document Only": "Error! Main Document Only.",
+            "Error! No text of specified style in document": "Error! No text of specified style in document.",
+            "Error! Not a valid bookmark self-reference": "Error! Not a valid bookmark self-reference.",
+            "Even Page ": "Even Page ",
+            "First Page ": "First Page ",
+            "Footer": "Footer",
+            "footnote text": "Footnote Text",
+            "Header": "Header",
+            "Heading 1": "Heading 1",
+            "Heading 2": "Heading 2",
+            "Heading 3": "Heading 3",
+            "Heading 4": "Heading 4",
+            "Heading 5": "Heading 5",
+            "Heading 6": "Heading 6",
+            "Heading 7": "Heading 7",
+            "Heading 8": "Heading 8",
+            "Heading 9": "Heading 9",
+            "Hyperlink": "Hyperlink",
+            "Index Too Large": "Index Too Large",
+            "Intense Quote": "Intense Quote",
+            "Is Not In Table": "Is Not In Table",
+            "List Paragraph": "List Paragraph",
+            "Missing Argument": "Missing Argument",
+            "Missing Operator": "Missing Operator",
+            "No Spacing": "No Spacing",
+            "No table of contents entries found": "There are no headings in the document. Apply a heading style to the text so that it appears in the table of contents.",
+            "No table of figures entries found": "No table of figures entries found.",
+            "None": "None",
+            "Normal": "Normal",
+            "Number Too Large To Format": "Number Too Large To Format",
+            "Odd Page ": "Odd Page ",
+            "Quote": "Quote",
+            "Same as Previous": "Same as Previous",
+            "Series": "Series",
+            "Subtitle": "Subtitle",
+            "Syntax Error": "Syntax Error",
+            "Table Index Cannot be Zero": "Table Index Cannot be Zero",
+            "Table of Contents": "Table of Contents",
+            "table of figures": "Table of figures",
+            "The Formula Not In Table": "The Formula Not In Table",
+            "Title": "Title",
+            "TOC Heading": "TOC Heading",
+            "Type equation here": "Type equation here",
+            "Undefined Bookmark": "Undefined Bookmark",
+            "Unexpected End of Formula": "Unexpected End of Formula",
+            "X Axis": "X Axis XAS",
+            "Y Axis": "Y Axis",
+            "Your text here": "Your text here",
+            "Zero Divide": "Zero Divide",
+            "Default Paragraph Font": "Default Paragraph Font",
+            "No List": "No list",
+            "Intense Emphasis": "Intense Emphasis",
+            "Intense Reference": "Intense Reference",
+            "Subtle Emphasis": "Subtle Emphasis",
+            "Emphasis": "Emphasis",
+            "Strong": "Strong",
+            "Subtle Reference": "Subtle Reference",
+            "Book Title":"Book Title",
+            "footnote reference": "Footnote reference",
+            "endnote reference": "Endnote reference"
+        };
+        let me = this;
+        ['Aspect', 'Blue Green', 'Blue II', 'Blue Warm', 'Blue', 'Grayscale', 'Green Yellow', 'Green', 'Marquee', 'Median', 'Office 2007 - 2010', 'Office 2013 - 2022', 'Office',
+        'Orange Red', 'Orange', 'Paper', 'Red Orange', 'Red Violet', 'Red', 'Slipstream', 'Violet II', 'Violet', 'Yellow Orange', 'Yellow'].forEach(function(item){
+            me.fallbackSdkTranslations[item] = item;
+        });
 
         this._state = {
             licenseType: false,
             isFromGatewayDownloadAs: false,
             isDocModified: false,
-            docProtection: false
+            docProtection: false,
+            requireUserAction: true
         };
 
         this.defaultTitleText = __APP_TITLE_TEXT__;
@@ -106,8 +186,14 @@ class MainController extends Component {
                 this.props.storeApplicationSettings.changeMacrosRequest((value !== null) ? parseInt(value)  : 0);
 
                 this.props.storeAppOptions.wopi = this.editorConfig.wopi;
-
                 Common.Notifications.trigger('configOptionsFill');
+
+                this.loadDefaultMetricSettings();
+
+                if (this.editorConfig.canRequestRefreshFile) {
+                    Common.Gateway.on('refreshfile', this.onRefreshFile.bind(this));
+                    this.api.asc_registerCallback('asc_onRequestRefreshFile', this.onRequestRefreshFile.bind(this));
+                }
             };
 
             const loadDocument = data => {
@@ -140,6 +226,8 @@ class MainController extends Component {
                     docInfo.put_EncryptedInfo(this.editorConfig.encryptionKeys);
                     docInfo.put_Lang(this.editorConfig.lang);
                     docInfo.put_Mode(this.editorConfig.mode);
+                    docInfo.put_Wopi(this.editorConfig.wopi);
+                    this.editorConfig.shardkey && docInfo.put_Shardkey(this.editorConfig.shardkey);
 
                     let type = /^(?:(pdf|djvu|xps|oxps))$/.exec(data.doc.fileType);
                     let coEditMode = (type && typeof type[1] === 'string') ? 'strict' :  // offline viewer for pdf|djvu|xps|oxps
@@ -158,9 +246,16 @@ class MainController extends Component {
                     }
                 }
 
-                let type = data.doc ? /^(?:(oform))$/.exec(data.doc.fileType) : false;
-                if (type && typeof type[1] === 'string') {
-                    (this.permissions.fillForms===undefined) && (this.permissions.fillForms = (this.permissions.edit!==false));
+
+                if(/^(pdf|docxf|oform|djvu|xps|oxps)$/.test(data.doc.fileType)) {
+                    this.changeEditorBrandColorForPdf();
+                }
+
+                if(data.doc.fileType === 'pdf') {
+                    if(this.permissions.fillForms === undefined) {
+                        this.permissions.fillForms = this.permissions.edit !== false;
+                    }
+
                     this.permissions.edit = this.permissions.review = this.permissions.comment = false;
                 }
 
@@ -175,8 +270,6 @@ class MainController extends Component {
                 // Document Info
 
                 const storeDocumentInfo = this.props.storeDocumentInfo;
-                // this.document
-
                 storeDocumentInfo.setDataDoc(this.document);
                 storeDocumentInfo.setDocInfo(docInfo);
 
@@ -206,31 +299,49 @@ class MainController extends Component {
                         title   : Asc.c_oLicenseResult.NotBefore === licType ? _t.titleLicenseNotActive : _t.titleLicenseExp,
                         text    : Asc.c_oLicenseResult.NotBefore === licType ? _t.warnLicenseBefore : _t.warnLicenseExp
                     }).open();
+                    if (this._isDocReady || this._isPermissionsInited) { // receive after refresh file
+                        Common.Notifications.trigger('api:disconnect');
+                    }
                     return;
                 }
 
                 if ( this.onServerVersion(params.asc_getBuildVersion()) ) return;
+                if ( this._isDocReady || this._isPermissionsInited ) {
+                    this.api.asc_LoadDocument();
+                    return;
+                }
 
                 this.appOptions.canLicense = (licType === Asc.c_oLicenseResult.Success || licType === Asc.c_oLicenseResult.SuccessLimit);
 
                 const storeAppOptions = this.props.storeAppOptions;
                 const editorConfig = window.native?.editorConfig;
-                const isForceEdit = editorConfig?.mobileForceView === false;
+                const config = storeAppOptions.config;
+                const customization = config.customization;
+                let isMobileForceView = undefined;
+                if ( customization && customization.mobileForceView !== undefined )
+                    isMobileForceView = customization.mobileForceView;
+                else if ( editorConfig && editorConfig.mobileForceView !== undefined )
+                    isMobileForceView = editorConfig.mobileForceView;
+
+                const isForceView = isMobileForceView ?? customization?.mobile?.forceView ?? true;
+
+                if(customization?.mobileForceView !== undefined && customization?.mobileForceView !== null) {
+                    console.warn("Obsolete: The mobileForceView parameter is deprecated. Please use the forceView parameter from customization.mobile block");
+                }
 
                 storeAppOptions.setPermissionOptions(this.document, licType, params, this.permissions, EditorUIController.isSupportEditFeature());
 
                 this.applyMode(storeAppOptions);
 
-                const storeDocumentInfo = this.props.storeDocumentInfo;
-                const dataDoc = storeDocumentInfo.dataDoc;
-                const isExtRestriction = dataDoc.fileType !== 'oform';
-
-                if(isExtRestriction && !isForceEdit) {
-                    this.api.asc_addRestriction(Asc.c_oAscRestrictionType.View);
-                } else if(isExtRestriction && isForceEdit) {
-                    storeAppOptions.changeViewerMode(false);
+                this._isPermissionsInited = true;
+                if ( storeAppOptions.isForm ) {
+                    this.api.asc_addRestriction(Asc.c_oAscRestrictionType.OnlyForms);
                 } else {
-                    this.api.asc_addRestriction(Asc.c_oAscRestrictionType.OnlyForms)
+                    if( isForceView ) {
+                        this.api.asc_addRestriction(Asc.c_oAscRestrictionType.View);
+                    } else {
+                        storeAppOptions.changeViewerMode(false);
+                    }
                 }
 
                 this.api.asc_LoadDocument();
@@ -241,11 +352,12 @@ class MainController extends Component {
                 if (this._isDocReady)
                     return;
 
+                const { t } = this.props;
                 const appOptions = this.props.storeAppOptions;
+                const isOForm = appOptions.isOForm;
                 const appSettings = this.props.storeApplicationSettings;
-                const storeDocumentInfo = this.props.storeDocumentInfo;
-                const dataDoc = storeDocumentInfo.dataDoc;
-                const isExtRestriction = dataDoc.fileType !== 'oform';
+                const customization = appOptions.customization;
+                const _userOptions = this.props.storeAppOptions.user;
 
                 f7.emit('resize');
 
@@ -259,10 +371,10 @@ class MainController extends Component {
                 appOptions.isRestrictedEdit && appOptions.canFillForms && this.api.asc_SetHighlightRequiredFields(true);
 
                 let value = LocalStorage.getItem("de-settings-zoom");
-                const zf = (value !== null) ? parseInt(value) : (appOptions.customization && appOptions.customization.zoom ? parseInt(appOptions.customization.zoom) : 100);
+                const zf = (value !== null) ? parseInt(value) : (customization && customization.zoom ? parseInt(customization.zoom) : 100);
                 (zf === -1) ? this.api.zoomFitToPage() : ((zf === -2) ? this.api.zoomFitToWidth() : this.api.zoom(zf>0 ? zf : 100));
 
-                value = LocalStorage.getBool("de-mobile-spellcheck", !(appOptions.customization && appOptions.customization.spellcheck === false));
+                value = LocalStorage.getBool("de-mobile-spellcheck", !(customization && customization.spellcheck === false));
                 appSettings.changeSpellCheck(value);
                 this.api.asc_setSpellCheck(value);
 
@@ -276,9 +388,10 @@ class MainController extends Component {
                 appSettings.changeShowTableEmptyLine(value);
                 this.api.put_ShowTableEmptyLine(value);
 
-                value = LocalStorage.getBool('mobile-view', true);
+                value = LocalStorage.itemExists('mobile-view') ?
+                            LocalStorage.getBool('mobile-view') : !(customization?.mobile?.standardView ?? false);
 
-                if(value && isExtRestriction) {
+                if(appOptions.isMobileViewAvailable && value) {
                     this.api.ChangeReaderMode();
                 } else {
                     appOptions.changeMobileView();
@@ -292,6 +405,8 @@ class MainController extends Component {
                 Common.Gateway.on('processrightschange', this.onProcessRightsChange.bind(this));
                 Common.Gateway.on('downloadas', this.onDownloadAs.bind(this));
                 Common.Gateway.on('requestclose', this.onRequestClose.bind(this));
+                Common.Gateway.on('setfavorite', this.onSetFavorite.bind(this));
+                Common.Gateway.on('insertimage', this.insertImage.bind(this));
 
                 Common.Gateway.sendInfo({
                     mode: appOptions.isEdit ? 'edit' : 'view'
@@ -305,54 +420,64 @@ class MainController extends Component {
                 Common.Notifications.trigger('document:ready');
                 Common.Gateway.documentReady();
                 appOptions.changeDocReady(true);
-            };
+                this._state.requireUserAction = false;
 
-            const _process_array = (array, fn) => {
-                let results = [];
-                return array.reduce(function(p, item) {
-                    return p.then(function() {
-                        return fn(item).then(function(data) {
-                            results.push(data);
-                            return results;
-                        });
-                    });
-                }, Promise.resolve());
-            };
+                if(isOForm) {
+                    f7.dialog.create({
+                        title: t('Main.notcriticalErrorTitle'),
+                        text: t('Main.textConvertForm'),
+                        buttons: [
+                            {
+                                text: t('Main.textDownloadPdf'),
+                                onClick: () => {
+                                    this.api.asc_DownloadAs(new Asc.asc_CDownloadOptions(Asc.c_oAscFileType.PDF, false))
+                                }
+                            },
+                            {
+                                text: t('Main.textCancel')
+                            }
+                        ]
+                    }).open();
+                }
 
-            _process_array(dep_scripts, promise_get_script)
-                .then ( result => {
-                    window["flat_desine"] = true;
-                    const {t} = this.props;
-                    let _translate = t('Main.SDK', {returnObjects:true});
-                    for (let item in _translate) {
-                        if (_translate.hasOwnProperty(item)) {
-                            const str = _translate[item];
-                            if (item[item.length-1]===' ' && str[str.length-1]!==' ')
-                                _translate[item] += ' ';
+                if (appOptions.isRestrictedEdit && appOptions.canFillForms && appOptions.isForm) { // check filling status
+                    let oform = this.api.asc_GetOForm();
+                    let role = new AscCommon.CRestrictionSettings();
+                    const _userOptions = this.props.storeAppOptions.user;
+                    if (oform && _userOptions && _userOptions.roles) {
+                        if (_userOptions.roles.length>0 && oform.asc_canFillRole(_userOptions.roles[0])) {
+                            role.put_OFormRole(_userOptions.roles[0]);
+                        } else {
+                            role.put_OFormNoRole(true);
+                            Common.Notifications.trigger('toolbar:deactivateeditcontrols');
                         }
                     }
-                    ["Error! Bookmark not defined",
-                     "No table of contents entries found",
-                     "No table of figures entries found",
-                     "Error! Main Document Only",
-                     "Error! Not a valid bookmark self-reference",
-                     "Error! No text of specified style in document"].forEach(item => {
-                        _translate[item + '.'] = _translate[item];
-                        delete _translate[item];
-                    });
+                    this.api.asc_setRestriction(Asc.c_oAscRestrictionType.OnlyForms, role);
+                }
+            };
 
-                    var result = /[\?\&]fileType=\b(pdf|djvu|xps|oxps)\b&?/i.exec(window.location.search),
-                        isPDF = (!!result && result.length && typeof result[1] === 'string');
+            processArrayScripts(dep_scripts, promise_get_script)
+                .then(() => {
+                    window["flat_desine"] = true;
+                    const { t } = this.props;
+                    let _translate = t('Main.SDK', { returnObjects: true });
 
-                    this.api = isPDF ? new Asc.PDFEditorApi({
+                    if (!(typeof _translate === 'object' && _translate !== null && Object.keys(_translate).length > 0)) {
+                        _translate = this.fallbackSdkTranslations
+                    }
+
+                    let result = /[\?\&]fileType=\b(pdf)|(djvu|xps|oxps)\b&?/i.exec(window.location.search),
+                        isPDF = (!!result && result.length && typeof result[2] === 'string') || (!!result && result.length && typeof result[1] === 'string') && !window.isPDFForm;
+
+                    const config = {
                         'id-view'  : 'editor_sdk',
                         'mobile'   : true,
-                        'translate': _translate
-                    }) : new Asc.asc_docs_api({
-                        'id-view'  : 'editor_sdk',
-                        'mobile'   : true,
-                        'translate': _translate
-                    });
+                        'translate': _translate,
+                        'isRtlInterface': Common.Locale.isCurrentLangRtl
+                    };
+                    let hcolor = (/(?:&|^)headingsColor=([^&]+)&?/i).exec(window.location.search.substring(1));
+                    hcolor && (config['headings-color'] = '#' + hcolor[1]);
+                    this.api = isPDF ? new Asc.PDFEditorApi(config) : new Asc.asc_docs_api(config);
 
                     Common.Notifications.trigger('engineCreated', this.api);
                     // Common.EditorApi = {get: () => this.api};
@@ -370,7 +495,8 @@ class MainController extends Component {
 
                     Common.Utils.Metric.setCurrentMetric(1); //pt
 
-                    this.appOptions   = {};
+                    this.appOptions = {isCorePDF: isPDF};
+                    this.props.storeAppOptions.isMobileViewAvailable = !this.appOptions.isCorePDF;
                     this.bindEvents();
 
                     Common.Gateway.on('init',           loadConfig);
@@ -392,7 +518,8 @@ class MainController extends Component {
                     Common.Gateway.internalMessage('listenHardBack');
                 }, error => {
                     console.log('promise failed ' + error);
-                });
+                }
+            );
         };
 
         if ( About.developVersion() ) {
@@ -410,9 +537,73 @@ class MainController extends Component {
         }
     }
 
+    insertImage (data) {
+        if (data && (data.url || data.images)) {
+            if (data.url) {
+                console.log("Obsolete: The 'url' parameter of the 'insertImage' method is deprecated. Please use 'images' parameter instead.");
+            }
+
+            let arr = [];
+
+            if (data.images && data.images.length > 0) {
+                for (let i = 0; i < data.images.length; i++) {
+                    if (data.images[i] && data.images[i].url) {
+                        arr.push(data.images[i].url);
+                    }
+                }
+            } else if (data.url) {
+                arr.push(data.url);
+            }
+               
+            data._urls = arr;
+        }
+
+        this.insertImageFromStorage(data);
+    }
+
+    loadDefaultMetricSettings() {
+        const appOptions = this.props.storeAppOptions;
+        let region = '';
+
+        if (appOptions.location) {
+            console.log("Obsolete: The 'location' parameter of the 'editorConfig' section is deprecated. Please use 'region' parameter in the 'editorConfig' section instead.");
+            region = appOptions.location;
+        } else if (appOptions.region) {
+            let val = appOptions.region;
+            val = Common.util.LanguageInfo.getLanguages().hasOwnProperty(val) ? Common.util.LanguageInfo.getLocalLanguageName(val)[0] : val;
+
+            if (val && typeof val === 'string') {
+                let arr = val.split(/[\-_]/);
+                if (arr.length > 1) region = arr[arr.length - 1]
+            }
+        } else {
+            let arr = (appOptions.lang || 'en').split(/[\-_]/);
+
+            if (arr.length > 1) region = arr[arr.length - 1]
+            if (!region) {
+                arr = (navigator.language || '').split(/[\-_]/);
+                if (arr.length > 1) region = arr[arr.length - 1]
+            }
+        }
+
+        if (/^(ca|us)$/i.test(region)) {
+            Common.Utils.Metric.setDefaultMetric(Common.Utils.Metric.c_MetricUnits.inch);
+        }
+    }
+
+    changeEditorBrandColorForPdf() {
+        const bodyElement = document.body;
+        bodyElement.classList.add('pdf-view');
+
+        if(Device.android) {
+            bodyElement.classList.add('pdf-view__android');
+        }
+    }
+
     applyMode (appOptions) {
         this.api.asc_enableKeyEvents(appOptions.isEdit);
         this.api.asc_setViewMode(!appOptions.isEdit && !appOptions.isRestrictedEdit);
+        this.appOptions.isCorePDF && this.api.asc_setPdfViewer(!appOptions.isEdit && !appOptions.isRestrictedEdit);
         appOptions.isRestrictedEdit && appOptions.canComments && this.api.asc_setRestriction(Asc.c_oAscRestrictionType.OnlyComments);
         appOptions.isRestrictedEdit && appOptions.canFillForms && this.api.asc_setRestriction(Asc.c_oAscRestrictionType.OnlyForms);
 
@@ -499,21 +690,18 @@ class MainController extends Component {
         const warnLicenseUsersExceeded = _t.warnLicenseUsersExceeded.replace(/%1/g, __COMPANY_NAME__);
 
         const appOptions = this.props.storeAppOptions;
-        const storeDocumentInfo = this.props.storeDocumentInfo;
-        const dataDoc = storeDocumentInfo.dataDoc;
-        const docExt = dataDoc.fileType;
-        const isOpenForm = docExt === 'oform';
+        const isForm = appOptions.isForm;
 
         if (appOptions.config.mode !== 'view' && !EditorUIController.isSupportEditFeature()) {
             let value = LocalStorage.getItem("de-opensource-warning");
             value = (value !== null) ? parseInt(value) : 0;
             const now = (new Date).getTime();
-            if (now - value > 86400000 && !isOpenForm) {
+            if (now - value > 86400000) {
                 LocalStorage.setItem("de-opensource-warning", now);
                 f7.dialog.create({
                     title: _t.notcriticalErrorTitle,
                     text : _t.errorOpensource,
-                    buttons: [{text: 'OK'}]
+                    buttons: [{ text: _t.textOk }]
                 }).open();
             }
             Common.Notifications.trigger('toolbar:activatecontrols');
@@ -536,11 +724,11 @@ class MainController extends Component {
             f7.dialog.create({
                 title: _t.notcriticalErrorTitle,
                 text : _t.warnLicenseAnonymous,
-                buttons: [{text: 'OK'}]
+                buttons: [{ text: _t.textOk }]
             }).open();
         } else if (this._state.licenseType) {
             let license = this._state.licenseType;
-            let buttons = [{text: 'OK'}];
+            let buttons = [{ text: _t.textOk }];
             if ((appOptions.trialMode & Asc.c_oLicenseMode.Limited) !== 0 &&
                 (license === Asc.c_oLicenseResult.SuccessLimit ||
                     appOptions.permissionsLicense === Asc.c_oLicenseResult.SuccessLimit)
@@ -618,6 +806,9 @@ class MainController extends Component {
                 () => {
                     setTimeout(() => {Common.Gateway.updateVersion()}, 0);
                 });
+            if (this._isDocReady) { // receive after refresh file
+                Common.Notifications.trigger('api:disconnect');
+            }
             return true;
         }
         return false;
@@ -651,15 +842,33 @@ class MainController extends Component {
             storeDocumentSettings.changeDocSize(w, h);
         });
 
+        if ( this.appOptions.isCorePDF ) {
+            this.api.asc_registerCallback('asc_onShowPDFFormsActions', (obj, x, y) => {
+                switch (obj.type) {
+                    case AscPDF.FIELD_TYPES.combobox:
+                        this.onShowListActions(obj, x, y);
+                        break;
+                    case AscPDF.FIELD_TYPES.text:
+                        this.onShowDateActions(obj, x, y);
+                        break;
+                }
+            });
+
+            this.api.asc_registerCallback('asc_onHidePdfFormsActions', () => {
+                if ( this.cmpCalendar && this.cmpCalendar.opened )
+                    this.cmpCalendar.close();
+            });
+        }
+
+        this.api.asc_registerCallback('asc_onHideContentControlsActions', () => {
+        });
+
         this.api.asc_registerCallback('asc_onShowContentControlsActions', (obj, x, y) => {
             const storeAppOptions = this.props.storeAppOptions;
-            const storeDocumentInfo = this.props.storeDocumentInfo;
+            const isForm = storeAppOptions.isForm;
             const isViewer = storeAppOptions.isViewer;
-            const dataDoc = storeDocumentInfo.dataDoc;
-            const docExt = dataDoc.fileType;
-            const isAvailableExt = docExt && docExt !== 'oform';
 
-            if (!storeAppOptions.isEdit && !(storeAppOptions.isRestrictedEdit && storeAppOptions.canFillForms) || this.props.users.isDisconnected || (isViewer && isAvailableExt)) return;
+            if (!storeAppOptions.isEdit && !(storeAppOptions.isRestrictedEdit && storeAppOptions.canFillForms) || this.props.users.isDisconnected || (isViewer && !isForm)) return;
 
             switch (obj.type) {
                 case Asc.c_oAscContentControlSpecificType.DateTime:
@@ -753,14 +962,15 @@ class MainController extends Component {
         });
 
         this.api.asc_registerCallback('asc_onGetDocInfoEnd', () => {
-          clearTimeout(this.timerLoading);
-          clearInterval(this.timerDocInfo);
-          storeDocumentInfo.changeCount(this.objectInfo);
+            clearTimeout(this.timerLoading);
+            clearInterval(this.timerDocInfo);
+            storeDocumentInfo.changeCount(this.objectInfo);
         });
 
         this.api.asc_registerCallback('asc_onMeta', (meta) => {
             if(meta) {
                 storeDocumentInfo.changeTitle(meta.title);
+                Common.Gateway.metaChange(meta);
             }
         });
 
@@ -781,6 +991,10 @@ class MainController extends Component {
                 storeAppOptions.setEncryptionFile(true);
                 onAdvancedOptions(type, _t, this._isDocReady, this.props.storeAppOptions.canRequestClose, this.isDRM);
                 this.isDRM = true;
+            }
+            if (this._state.requireUserAction) {
+                Common.Gateway.userActionRequired();
+                this._state.requireUserAction = false;
             }
         });
 
@@ -807,6 +1021,23 @@ class MainController extends Component {
         this.api.asc_registerCallback('asc_onViewerBookmarksUpdate', (bookmarks) => {
             storeNavigation.initBookmarks(bookmarks);
         });
+
+        Common.Notifications.on('markfavorite', this.markFavorite.bind(this));
+    }
+
+    insertImageFromStorage(data) {
+        if (data && data._urls && (!data.c || data.c === 'add') && data._urls.length > 0) {
+            this.api.AddImageUrl(data._urls, undefined, data.token);
+        }
+    }
+
+    markFavorite(favorite) {
+        Common.Gateway.metaChange({ favorite });
+    }
+
+    onSetFavorite(favorite) {
+        const appOptions = this.props.storeAppOptions;
+        appOptions.canFavorite && appOptions.setFavorite(!!favorite);
     }
 
     onExpiredToken() {
@@ -923,12 +1154,17 @@ class MainController extends Component {
         const { t } = this.props;
         const boxSdk = $$('#editor_sdk');
 
-        let props = obj.pr,
-            specProps = props.get_DateTimePr(),
-            isPhone = Device.isPhone,
-            controlsContainer = boxSdk.find('#calendar-target-element'),
-            _dateObj = props;
+        let val = undefined;
+        if ( !this.appOptions.isCorePDF ) {
+            const specProps = obj.pr.get_DateTimePr();
+            if ( specProps )
+                val = specProps.get_FullDate();
+        } else {
+            if ( obj )
+                val = obj.asc_GetValue();
+        }
 
+        let controlsContainer = boxSdk.find('#calendar-target-element');
         if (controlsContainer.length < 1) {
             controlsContainer = $$('<div id="calendar-target-element" style="position: absolute;"></div>');
             boxSdk.append(controlsContainer);
@@ -936,25 +1172,34 @@ class MainController extends Component {
 
         controlsContainer.css({left: `${x}px`, top: `${y}px`});
 
-        const val = specProps ? specProps.get_FullDate() : undefined;
         this.cmpCalendar = f7.calendar.create({
             inputEl: '#calendar-target-element',
             dayNamesShort: [t('Edit.textSu'), t('Edit.textMo'), t('Edit.textTu'), t('Edit.textWe'), t('Edit.textTh'), t('Edit.textFr'), t('Edit.textSa')],
             monthNames: [t('Edit.textJanuary'), t('Edit.textFebruary'), t('Edit.textMarch'), t('Edit.textApril'), t('Edit.textMay'), t('Edit.textJune'), t('Edit.textJuly'), t('Edit.textAugust'), t('Edit.textSeptember'), t('Edit.textOctober'), t('Edit.textNovember'), t('Edit.textDecember')],
-            backdrop: isPhone ? false : true,
-            closeByBackdropClick: isPhone ? false : true,
+            backdrop: !Device.isPhone,
+            closeByBackdropClick: !Device.isPhone,
             value: [val ? new Date(val) : new Date()],
-            openIn: isPhone ? 'sheet' : 'popover',
+            openIn: Device.isPhone ? 'sheet' : 'popover',
             on: {
                 change: (calendar, value) => {
                     if(calendar.initialized && value[0]) {
-                        let specProps = _dateObj.get_DateTimePr();
-                        specProps.put_FullDate(new Date(value[0]));
-                        this.api.asc_SetContentControlDatePickerDate(specProps);
-                        calendar.close();
-                        this.api.asc_UncheckContentControlButtons();
+                        if ( !this.appOptions.isCorePDF ) {
+                            const specProps = obj.pr.get_DateTimePr();
+                            specProps.put_FullDate(new Date(value[0]));
+                            this.api.asc_SetContentControlDatePickerDate(specProps);
+                            calendar.close();
+                            this.api.asc_UncheckContentControlButtons();
+                        } else {
+                            const specProps = new AscCommon.CSdtDatePickerPr();
+                            specProps.put_FullDate(new Date(value[0]));
+                            this.api.asc_SetTextFormDatePickerDate(specProps);
+                            calendar.close();
+                        }
                     }
-                }
+                },
+                closed: () => {
+                    this.cmpCalendar = null;
+                },
             }
         });
 
@@ -976,7 +1221,9 @@ class MainController extends Component {
             dropdownListTarget.css({left: `${x}px`, top: `${y}px`});
         }
 
-        Common.Notifications.trigger('openDropdownList', obj);
+        if ( !this.appOptions.isCorePDF )
+            Common.Notifications.trigger('openDropdownList', obj);
+        else Common.Notifications.trigger('openPdfDropdownList', obj);
     }
 
     onProcessSaveResult (data) {
@@ -1014,9 +1261,10 @@ class MainController extends Component {
         }
     }
 
-    onDownloadAs () {
+    onDownloadAs(format) {
         const appOptions = this.props.storeAppOptions;
-        if ( !appOptions.canDownload && !appOptions.canDownloadOrigin) {
+
+        if (!appOptions.canDownload && !appOptions.canDownloadOrigin) {
             const { t } = this.props;
             const _t = t('Main', {returnObjects:true});
             Common.Gateway.reportError(Asc.c_oAscError.ID.AccessDeny, _t.errorAccessDeny);
@@ -1024,12 +1272,61 @@ class MainController extends Component {
         }
 
         this._state.isFromGatewayDownloadAs = true;
+
+        let _format = (format && (typeof format == 'string')) ? Asc.c_oAscFileType[format.toUpperCase()] : null,
+            _defaultFormat = null,
+            textParams,
+            _supported = [
+                Asc.c_oAscFileType.TXT,
+                Asc.c_oAscFileType.RTF,
+                Asc.c_oAscFileType.ODT,
+                Asc.c_oAscFileType.DOCX,
+                Asc.c_oAscFileType.HTML,
+                Asc.c_oAscFileType.DOTX,
+                Asc.c_oAscFileType.OTT,
+                Asc.c_oAscFileType.FB2,
+                Asc.c_oAscFileType.EPUB,
+                Asc.c_oAscFileType.DOCM,
+                Asc.c_oAscFileType.JPG,
+                Asc.c_oAscFileType.PNG
+            ];
         const type = /^(?:(pdf|djvu|xps|oxps))$/.exec(this.document.fileType);
 
-        if (type && typeof type[1] === 'string') {
-            this.api.asc_DownloadOrigin(true);
+        if (type && typeof type[1] === 'string' && !appOptions.isForm) {
+            if (!(format && (typeof format == 'string')) || type[1] === format.toLowerCase()) {
+                const options = new Asc.asc_CDownloadOptions();
+                options.asc_setIsDownloadEvent(true);
+                options.asc_setIsSaveAs(true);
+                this.api.asc_DownloadOrigin(options);
+                return;
+            }
+
+            if (/^xps|oxps$/.test(this.document.fileType))
+                _supported = _supported.concat([Asc.c_oAscFileType.PDF, Asc.c_oAscFileType.PDFA]);
+            else if (/^djvu$/.test(this.document.fileType)) {
+                _supported = [Asc.c_oAscFileType.PDF];
+            }
+
+            textParams = new AscCommon.asc_CTextParams(Asc.c_oAscTextAssociation.PlainLine);
         } else {
-            this.api.asc_DownloadAs(new Asc.asc_CDownloadOptions(Asc.c_oAscFileType.DOCX, true));
+            _supported = _supported.concat([Asc.c_oAscFileType.PDF, Asc.c_oAscFileType.PDFA]);
+            _defaultFormat = Asc.c_oAscFileType.DOCX;
+        }
+
+        if (appOptions.canFeatureForms && !/^djvu$/.test(this.document.fileType)) {
+            _supported = _supported.concat([Asc.c_oAscFileType.DOCXF]);
+        }
+        if (!_format || _supported.indexOf(_format) < 0)
+            _format = _defaultFormat;
+
+        const options = new Asc.asc_CDownloadOptions(_format, true);
+        options.asc_setIsSaveAs(true);
+
+        if(_format) {
+            textParams && options.asc_setTextParams(textParams);
+            this.api.asc_DownloadAs(options);
+        } else {
+            this.api.asc_DownloadOrigin(options);
         }
     }
 
@@ -1081,6 +1378,7 @@ class MainController extends Component {
 
         this.needToUpdateVersion = true;
         Common.Notifications.trigger('preloader:endAction', Asc.c_oAscAsyncActionType['BlockInteraction'], this.LoadingDocument);
+        Common.Notifications.trigger('preloader:endAction', Asc.c_oAscAsyncActionType['BlockInteraction'], Asc.c_oAscAsyncAction['Open']);
 
         f7.dialog.alert(
             _t.errorUpdateVersion,
@@ -1090,8 +1388,9 @@ class MainController extends Component {
                 if (callback) {
                     callback.call(this);
                 }
-                Common.Notifications.trigger('preloader:beginAction', Asc.c_oAscAsyncActionType['BlockInteraction'], this.LoadingDocument);
+                this.editorConfig && this.editorConfig.canUpdateVersion && Common.Notifications.trigger('preloader:beginAction', Asc.c_oAscAsyncActionType['BlockInteraction'], this.LoadingDocument);
             });
+        Common.Notifications.trigger('api:disconnect');
     }
 
     onDocumentName () {
@@ -1272,6 +1571,64 @@ class MainController extends Component {
         }
     }
 
+    onRequestRefreshFile () {
+        Common.Gateway.requestRefreshFile();
+    }
+
+    onRefreshFile (data) {
+        if (data) {
+            let docInfo = new Asc.asc_CDocInfo();
+            if (data.document) {
+                docInfo.put_Id(data.document.key);
+                docInfo.put_Url(data.document.url);
+                docInfo.put_Title(data.document.title);
+                if (data.document.title) {
+                    const storeDocumentInfo = this.props.storeDocumentInfo;
+                    storeDocumentInfo.changeTitle(data.document.title);
+                    this.document.title = data.document.title;
+                    Common.Notifications.trigger('setdoctitle', data.document.title);
+                }
+                data.document.referenceData && docInfo.put_ReferenceData(data.document.referenceData);
+            }
+            if (data.editorConfig) {
+                docInfo.put_CallbackUrl(data.editorConfig.callbackUrl);
+            }
+            if (data.token)
+                docInfo.put_Token(data.token);
+
+            const _userOptions = this.props.storeAppOptions.user;
+            const _user = new Asc.asc_CUserInfo();
+            _user.put_Id(_userOptions.id);
+            _user.put_FullName(_userOptions.fullname);
+            _user.put_IsAnonymousUser(_userOptions.anonymous);
+            docInfo.put_UserInfo(_user);
+
+            const _options = Object.assign({}, this.document.options, this.editorConfig.actionLink || {});
+            docInfo.put_Options(_options);
+
+            docInfo.put_Format(this.document.fileType);
+            docInfo.put_Lang(this.editorConfig.lang);
+            docInfo.put_Mode(this.editorConfig.mode);
+            docInfo.put_Permissions(this.permissions);
+            docInfo.put_DirectUrl(data.document && data.document.directUrl ? data.document.directUrl : this.document.directUrl);
+            docInfo.put_VKey(data.document && data.document.vkey ?  data.document.vkey : this.document.vkey);
+            docInfo.put_EncryptedInfo(data.editorConfig && data.editorConfig.encryptionKeys ? data.editorConfig.encryptionKeys : this.editorConfig.encryptionKeys);
+
+            let enable = !this.editorConfig.customization || (this.editorConfig.customization.macros!==false);
+            docInfo.asc_putIsEnabledMacroses(!!enable);
+            enable = !this.editorConfig.customization || (this.editorConfig.customization.plugins!==false);
+            docInfo.asc_putIsEnabledPlugins(!!enable);
+
+            let type = /^(?:(pdf|djvu|xps|oxps))$/.exec(this.document.fileType);
+            let coEditMode = (type && typeof type[1] === 'string') ? 'strict' :  // offline viewer for pdf|djvu|xps|oxps
+                !(this.editorConfig.coEditing && typeof this.editorConfig.coEditing == 'object') ? 'fast' : // fast by default
+                    this.editorConfig.mode === 'view' && this.editorConfig.coEditing.change!==false ? 'fast' : // if can change mode in viewer - set fast for using live viewer
+                        this.editorConfig.coEditing.mode || 'fast';
+            docInfo.put_CoEditingMode(coEditMode);
+            this.api.asc_refreshFile(docInfo);
+        }
+    }
+
     render() {
         return (
             <Fragment>
@@ -1286,7 +1643,7 @@ class MainController extends Component {
                 <EncodingController />
                 <DropdownListController />
             </Fragment>
-            )
+        )
     }
 
     componentDidMount() {

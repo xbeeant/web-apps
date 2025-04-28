@@ -1,5 +1,5 @@
 /*
- * (c) Copyright Ascensio System SIA 2010-2023
+ * (c) Copyright Ascensio System SIA 2010-2024
  *
  * This program is a free software product. You can redistribute it and/or
  * modify it under the terms of the GNU Affero General Public License (AGPL)
@@ -35,9 +35,7 @@ if (Common === undefined)
 define([
     'text!common/main/lib/template/ExtendedColorDialog.template',
     'common/main/lib/component/HSBColorPicker',
-    'common/main/lib/component/MetricSpinner',
-    'common/main/lib/component/MaskedField',
-    'common/main/lib/component/Window'
+    'common/main/lib/component/MaskedField'
 ], function (dlgTemplate) {
     'use strict';
 
@@ -48,16 +46,15 @@ define([
 
         initialize : function(options) {
             Common.UI.Window.prototype.initialize.call(this, {
-                cls: 'extended-color-dlg',
+                cls: 'extended-color-dlg modal-dlg',
                 tpl: this.tpl({
                     txtNew: this.textNew,
-                    txtCurrent: this.textCurrent,
-                    txtAdd: this.addButtonText,
-                    txtCancel: this.cancelButtonText
+                    txtCurrent: this.textCurrent
                 }),
                 header: false,
-                width: 340,
-                height: 272
+                buttons: [{value: '1', caption: this.addButtonText}, {value: '0', caption: this.cancelButtonText}],
+                primary: '1',
+                width: 356
             });
 
             this.hexRe = /\s*#?([0-9a-fA-F][0-9a-fA-F]?)([0-9a-fA-F][0-9a-fA-F]?)([0-9a-fA-F][0-9a-fA-F]?)\s*/;
@@ -79,7 +76,7 @@ define([
             this.spinR = new Common.UI.MetricSpinner({
                 el: $('#extended-spin-r'),
                 step: 1,
-                width: 63,
+                width: 67,
                 value: '0',
                 defaultUnit : "",
                 maxValue: 255,
@@ -91,7 +88,7 @@ define([
             this.spinG = new Common.UI.MetricSpinner({
                 el: $('#extended-spin-g'),
                 step: 1,
-                width: 63,
+                width: 67,
                 value: '0',
                 defaultUnit : "",
                 maxValue: 255,
@@ -103,7 +100,7 @@ define([
             this.spinB = new Common.UI.MetricSpinner({
                 el: $('#extended-spin-b'),
                 step: 1,
-                width: 63,
+                width: 67,
                 value: '0',
                 defaultUnit : "",
                 maxValue: 255,
@@ -149,7 +146,7 @@ define([
         },
 
         getFocusedComponents: function() {
-            return [this.spinR, this.spinG, this.spinB, {cmp: this.textColor, selector: 'input'}];
+            return [this.spinR, this.spinG, this.spinB, {cmp: this.textColor, selector: 'input'}].concat(this.getFooterButtons());
         },
 
         getDefaultFocusableComponent: function () {

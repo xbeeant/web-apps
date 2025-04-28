@@ -73,12 +73,12 @@
     }
 }
 
-#current-plugin-box {
+.current-plugin-box {
     position: relative;
     width: 100%;
     height: 100%;
 
-    #current-plugin-header {
+    .current-plugin-header {
         position: absolute;
         height: 45px;
         left: 0;
@@ -99,28 +99,35 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-    }
 
-    .close {
-        position: absolute;
-        width: 20px;
-        height: 20px;
-        top: 12px;
-        right: 12px;
-        .rtl & {
-            right: auto;
-            left: 12px;
+        .tools {
+            display: flex;
+            flex-direction: row-reverse;
+            position: absolute;
+            right: 0;
+            .padding-right-12();
+
+            .rtl & {
+                right: auto;
+                left: 0;
+            }
+
+            & > * {
+                &:not(:first-child) {
+                    .margin-right-4();
+                }
+            }
         }
     }
 
-    #current-plugin-frame {
+    .current-plugin-frame {
         width: 100%;
         height: 100%;
         padding-top: 45px;
     }
 }
 
-#plugins-mask {
+.plugins-mask {
     position: absolute;
     top: 0;
     left: 0px;

@@ -1,5 +1,5 @@
 /*
- * (c) Copyright Ascensio System SIA 2010-2023
+ * (c) Copyright Ascensio System SIA 2010-2024
  *
  * This program is a free software product. You can redistribute it and/or
  * modify it under the terms of the GNU Affero General Public License (AGPL)
@@ -32,8 +32,7 @@
 /**
  *    TabBar.js
  *
- *    Created by Maxim Kadushkin on 28 March 2014
- *    Copyright (c) 2018 Ascensio System SIA. All rights reserved.
+ *    Created on 28 March 2014
  *
  */
 
@@ -101,7 +100,7 @@ define([
                 calculateBounds: function () {
                     var me = this,
                         length = me.bar.tabs.length,
-                        barBounds = me.bar.$bar.get(0).getBoundingClientRect();
+                        barBounds = Common.Utils.getBoundingClientRect(me.bar.$bar.get(0));
                     me.leftBorder = barBounds.left;
                     me.rightBorder = barBounds.right;
 
@@ -111,7 +110,7 @@ define([
                         me.bar.scrollX  = this.scrollLeft;
 
                         for (var i = 0; i < length; ++i) {
-                            this.bounds.push(me.bar.tabs[i].$el.get(0).getBoundingClientRect());
+                            this.bounds.push(Common.Utils.getBoundingClientRect(me.bar.tabs[i].$el.get(0)));
                         }
 
                         me.lastTabRight = me.bounds[length - 1].right;
@@ -213,6 +212,7 @@ define([
                     });
                 }
                 event.dataTransfer.effectAllowed = 'copyMove';
+                this.bar.preventCutTab = false;
                 this.bar.trigger('tab:dragstart', event.dataTransfer, this.bar.selectTabs);
             }, this),
             dragenter: $.proxy(function (e) {
@@ -247,11 +247,7 @@ define([
                     this.bar.isDragDrop = true;
                 }
                 var event = e.originalEvent;
-                if (event.dataTransfer.dropEffect === 'move' && !event.dataTransfer.mozUserCancelled) {
-                    this.bar.trigger('tab:dragend', true);
-                } else {
-                    this.bar.trigger('tab:dragend', false);
-                }
+                this.bar.trigger('tab:dragend', !this.bar.preventCutTab && event.dataTransfer.dropEffect === 'move' && !event.dataTransfer.mozUserCancelled);
                 this.bar.$el.find('.mousemove').removeClass('mousemove right');
             }, this),
             drop: $.proxy(function (e) {
@@ -263,6 +259,7 @@ define([
                 this.bar.$el.find('.mousemove').removeClass('mousemove right');
                 this.bar.trigger('tab:drop', event.dataTransfer, index, (event.ctrlKey || Common.Utils.isMac && event.altKey));
                 this.bar.isDrop = true;
+                this.bar.preventCutTab = true;
             }, this)
         });
     };
@@ -287,6 +284,7 @@ define([
             Common.UI.BaseView.prototype.initialize.call(this, options);
 
             this.saved = [];
+            this.isRTL = options.isRTL || false;
         },
 
         render: function () {
@@ -520,7 +518,7 @@ define([
                 if (this.$bar.find('.separator-item').length === 0) {
                     this.$bar.append('<li class="separator-item"><span></span></li>');
                 }
-                this.$bar.scrollLeft(this.$bar.scrollLeft() + (tab.position().left + parseInt(tab.css('width')) - this.$bar.width()) + (this.$bar.width() > 400 ? 20 : 5));
+                this.$bar.scrollLeft(this.$bar.scrollLeft() + (Common.Utils.getPosition(tab).left + parseInt(tab.css('width')) - this.$bar.width()) + (this.$bar.width() > 400 ? 20 : 5));
                 this.checkInvisible(suppress);
             } else {
                 if (!this.isTabVisible(this.tabs.length - 1) && this.$bar.find('.separator-item').length === 0) {
@@ -528,39 +526,79 @@ define([
                 }
                 var rightbound = this.$bar.width(),
                     tab, right, left;
-                if (index == 'forward') {
-                    for (var i = 0; i < this.tabs.length; i++) {
-                        tab = this.tabs[i].$el;
-                        right = tab.position().left + parseInt(tab.css('width'));
+                if (this.isRTL) {
+                    if (index == 'forward') {
+                        for (var i = this.tabs.length - 1; i >= 0; i--) {
+                            tab = this.tabs[i].$el;
+                            right = Common.Utils.getPosition(tab).left + parseInt(tab.css('width'));
 
-                        if (right > rightbound) {
-                            this.$bar.scrollLeft(this.$bar.scrollLeft() + (right - rightbound) + (this.$bar.width() > 400 ? 20 : 5));
-                            this.checkInvisible(suppress);
-                            break;
+                            if (right > rightbound) {
+                                this.$bar.scrollLeft(this.$bar.scrollLeft() + (right - rightbound) + (rightbound > 400 ? 20 : 5));
+                                this.checkInvisible(suppress);
+                                break;
+                            }
                         }
                     }
-                } else if (index == 'backward') {
-                    for (i = this.tabs.length; i-- > 0; ) {
-                        tab = this.tabs[i].$el;
-                        left = tab.position().left;
+                    else if (index == 'backward') {
+                        for (var i = 0; i < this.tabs.length; i++) {
+                            tab = this.tabs[i].$el;
+                            left = Common.Utils.getPosition(tab).left;
+
+                            if (left < 0) {
+                                this.$bar.scrollLeft(this.$bar.scrollLeft() + left - 26);
+                                this.checkInvisible(suppress);
+                                break;
+                            }
+                        }
+                    }
+                    else if (typeof index == 'number') {
+                        tab = this.tabs[index].$el;
+                        left = Common.Utils.getPosition(tab).left;
+                        right = left + parseInt(tab.css('width'));
+
+                        if (right > rightbound) {
+                            this.$bar.scrollLeft(this.$bar.scrollLeft() + (right - rightbound) + 20);
+                            this.checkInvisible(suppress);
+                        } else if (left < 0) {
+                            this.$bar.scrollLeft(this.$bar.scrollLeft() + left - 26);
+                            this.checkInvisible(suppress);
+                        }
+                    }
+                } else {
+                    if (index == 'forward') {
+                        for (var i = 0; i < this.tabs.length; i++) {
+                            tab = this.tabs[i].$el;
+                            right = Common.Utils.getPosition(tab).left + parseInt(tab.css('width'));
+
+                            if (right > rightbound) {
+                                this.$bar.scrollLeft(this.$bar.scrollLeft() + (right - rightbound) + (this.$bar.width() > 400 ? 20 : 5));
+                                this.checkInvisible(suppress);
+                                break;
+                            }
+                        }
+                    } else if (index == 'backward') {
+                        for (i = this.tabs.length; i-- > 0; ) {
+                            tab = this.tabs[i].$el;
+                            left = Common.Utils.getPosition(tab).left;
+
+                            if (left < 0) {
+                                this.$bar.scrollLeft(this.$bar.scrollLeft() + left - 26);
+                                this.checkInvisible(suppress);
+                                break;
+                            }
+                        }
+                    } else if (typeof index == 'number') {
+                        tab = this.tabs[index].$el;
+                        left = Common.Utils.getPosition(tab).left;
+                        right = left + parseInt(tab.css('width'));
 
                         if (left < 0) {
                             this.$bar.scrollLeft(this.$bar.scrollLeft() + left - 26);
                             this.checkInvisible(suppress);
-                            break;
+                        } else if (right > rightbound) {
+                            this.$bar.scrollLeft(this.$bar.scrollLeft() + (right - rightbound) + 20);
+                            this.checkInvisible(suppress);
                         }
-                    }
-                } else if (typeof index == 'number') {
-                    tab = this.tabs[index].$el;
-                    left = tab.position().left;
-                    right = left + parseInt(tab.css('width'));
-
-                    if (left < 0) {
-                        this.$bar.scrollLeft(this.$bar.scrollLeft() + left - 26);
-                        this.checkInvisible(suppress);
-                    } else if (right > rightbound) {
-                        this.$bar.scrollLeft(this.$bar.scrollLeft() + (right - rightbound) + 20);
-                        this.checkInvisible(suppress);
                     }
                 }
             }
@@ -568,8 +606,8 @@ define([
 
         checkInvisible: function(suppress) {
             var result = {
-                first: !this.isTabVisible(Common.UI.isRTL() ? this.tabs.length-1 : 0),
-                last: !this.isTabVisible(Common.UI.isRTL() ? 0 : this.tabs.length-1)
+                first: !this.isTabVisible(this.isRTL ? this.tabs.length-1 : 0),
+                last: !this.isTabVisible(this.isRTL ? 0 : this.tabs.length-1)
             };
 
             !suppress && this.fireEvent('tab:invisible', this, result);
@@ -577,7 +615,7 @@ define([
         },
 
         hasInvisible: function() {
-            var _left_bound_ = this.$bar.offset().left,
+            var _left_bound_ = Common.Utils.getOffset(this.$bar).left,
                 _right_bound_ = _left_bound_ + this.$bar.width();
 
             for (var i = this.tabs.length; i-- > 0; ) {
@@ -590,13 +628,13 @@ define([
         },
 
         isTabVisible: function(index) {
-            var leftbound = arguments[1] || this.$bar.offset().left,
+            var leftbound = arguments[1] || Common.Utils.getOffset(this.$bar).left,
                 rightbound = arguments[2] || (leftbound + this.$bar.width()),
                 left, right, tab, rect;
 
             if (index < this.tabs.length && index >= 0) {
                 tab = this.tabs[index].$el;
-                rect = tab.get(0).getBoundingClientRect();
+                rect = Common.Utils.getBoundingClientRect(tab.get(0));
                 left = rect.left;
                 right = rect.right;
 
@@ -631,5 +669,9 @@ define([
             });
             return width;
         },
+
+        setDirection: function(isRTL) {
+            this.isRTL = isRTL;
+        }
     });
 });

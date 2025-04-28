@@ -1,5 +1,5 @@
 /*
- * (c) Copyright Ascensio System SIA 2010-2023
+ * (c) Copyright Ascensio System SIA 2010-2024
  *
  * This program is a free software product. You can redistribute it and/or
  * modify it under the terms of the GNU Affero General Public License (AGPL)
@@ -32,7 +32,7 @@
 /**
  * Controller wraps up interaction with desktop app
  *
- * Created by Maxim.Kadushkin on 2/16/2018.
+ * Created on 2/16/2018.
  */
 
 define([
@@ -40,7 +40,7 @@ define([
 ], function () {
     'use strict';
 
-    var webapp = window.DE || window.PE || window.SSE || window.PDFE;
+    var webapp = window.DE || window.PE || window.SSE || window.PDFE || window.VE;
     var features = Object.assign({
                         version: '{{PRODUCT_VERSION}}',
                         eventloading: true,
@@ -48,6 +48,10 @@ define([
                         uithemes: true,
                         btnhome: true,
                         quickprint: true,
+                        framesize: {
+                            width: window.innerWidth,
+                            height: window.innerHeight
+                        },
                     }, webapp.features);
 
     var native = window.desktop || window.AscDesktopEditor;
@@ -97,13 +101,15 @@ define([
 
                     if ( obj.singlewindow !== undefined ) {
                         // $('#box-document-title .hedset')[obj.singlewindow ? 'hide' : 'show']();
-                        native.features.singlewindow = obj.singlewindow;
 
                         if ( config.isFillFormApp ) {
                             $("#title-doc-name")[obj.singlewindow ? 'hide' : 'show']();
                         } else {
                             titlebuttons && titlebuttons.home && titlebuttons.home.btn.setVisible(obj.singlewindow);
                         }
+
+                        native.features.singlewindow = obj.singlewindow;
+                        Common.NotificationCenter.trigger('desktop:window', {"compositetitle": native.features.singlewindow});
                     }
                 } else
                 if (/editor:config/.test(cmd)) {
@@ -117,6 +123,12 @@ define([
                             if ( !$.isEmptyObject(titlebuttons) ) {
                                 var header = webapp.getController('Viewport').getView('Common.Views.Header');
                                 if (header) {
+                                    if ( native.getViewportSettings ) {
+                                        const viewport = native.getViewportSettings();
+                                        if ( viewport.widgetType == 'window' && titlebuttons.home )
+                                            titlebuttons.home.btn.setVisible(true);
+                                    }
+
                                     for (var i in titlebuttons) {
                                         opts.title.buttons.push(_serializeHeaderButton(i, titlebuttons[i]));
                                     }
@@ -139,7 +151,28 @@ define([
                     }
                 } else
                 if (/theme:changed/.test(cmd)) {
-                    Common.UI.Themes.setTheme(param);
+                    Common.UI.Themes.setTheme(param, "native");
+                } else
+                if (/^uitheme:added/.test(cmd)) {
+                    if ( !nativevars.localthemes )
+                        nativevars.localthemes = [];
+
+                    let json_objs;
+                    try {
+                        json_objs = JSON.parse(param);
+                    } catch (e) {
+                        console.warn('local theme is broken');
+                    }
+
+                    if ( json_objs ) {
+                        if (json_objs instanceof Array) {
+                            nativevars.localthemes = [].concat(nativevars.localthemes, json_objs);
+                            Common.UI.Themes.addTheme({themes: json_objs});
+                        } else {
+                            nativevars.localthemes.push(json_objs);
+                            Common.UI.Themes.addTheme(json_objs);
+                        }
+                    }
                 } else
                 if (/renderervars:changed/.test(cmd)) {
                     const opts = JSON.parse(param);
@@ -148,7 +181,7 @@ define([
                         window.RendererProcessVariable.theme.system = opts.theme.system;
 
                         if ( Common.UI.Themes.currentThemeId() == 'theme-system' )
-                            Common.UI.Themes.refreshTheme(true);
+                            Common.UI.Themes.refreshTheme(true, 'native');
                     }
                 } else
                 if (/element:show/.test(cmd)) {
@@ -160,7 +193,7 @@ define([
                 } else
                 if (/althints:show/.test(cmd)) {
                     if ( /false|hide/.test(param) )
-                        Common.NotificationCenter.trigger('hints:clear');
+                        Common.NotificationCenter && Common.NotificationCenter.trigger('hints:clear');
                 } else
                 if (/file:print/.test(cmd)) {
                     webapp.getController('Main').onPrint();
@@ -200,7 +233,7 @@ define([
                 icon: config.icon || undefined,
                 hint: config.btn.options.hint,
                 disabled: config.btn.isDisabled(),
-                visible: config.visible,
+                visible: config.btn.isVisible(),
             };
         };
 
@@ -234,11 +267,12 @@ define([
 
             if ( !!titlebuttons ) {
                 info.hints = {};
-                !!titlebuttons['print'] && (info.hints['print'] = titlebuttons['print'].btn.btnEl.attr('data-hint-title'));
-                !!titlebuttons['quickprint'] && (info.hints['quickprint'] = titlebuttons['quickprint'].btn.btnEl.attr('data-hint-title'));
-                !!titlebuttons['undo'] && (info.hints['undo'] = titlebuttons['undo'].btn.btnEl.attr('data-hint-title'));
-                !!titlebuttons['redo'] && (info.hints['redo'] = titlebuttons['redo'].btn.btnEl.attr('data-hint-title'));
-                !!titlebuttons['save'] && (info.hints['save'] = titlebuttons['save'].btn.btnEl.attr('data-hint-title'));
+                !!titlebuttons['print'] && (info.hints['print'] = titlebuttons['print'].btn.btnEl.attr('data-hint-title-lang'));
+                !!titlebuttons['quickprint'] && (info.hints['quickprint'] = titlebuttons['quickprint'].btn.btnEl.attr('data-hint-title-lang'));
+                !!titlebuttons['undo'] && (info.hints['undo'] = titlebuttons['undo'].btn.btnEl.attr('data-hint-title-lang'));
+                !!titlebuttons['redo'] && (info.hints['redo'] = titlebuttons['redo'].btn.btnEl.attr('data-hint-title-lang'));
+                !!titlebuttons['save'] && (info.hints['save'] = titlebuttons['save'].btn.btnEl.attr('data-hint-title-lang'));
+                !!titlebuttons['startover'] && (info.hints['startover'] = titlebuttons['startover'].btn.btnEl.attr('data-hint-title-lang'));
             }
 
             native.execCommand('althints:show', JSON.stringify(info));
@@ -248,6 +282,14 @@ define([
             if ( Common.UI.HintManager && Common.UI.HintManager.isHintVisible() ) {
                 native.execCommand('althints:keydown', JSON.stringify({code:e.keyCode}));
                 console.log('hint keydown', e.keyCode);
+            } else
+            if ( e.keyCode == 78 /* N */ ) {
+                if (config.canCreateNew && !e.shiftKey &&
+                        ((Common.Utils.isWindows && e.ctrlKey && !e.metaKey) ||
+                            (Common.Utils.isMac && e.metaKey && !e.ctrlKey)))
+                {
+                    this.process('create:new');
+                }
             }
         }
 
@@ -255,7 +297,8 @@ define([
             if ( !!titlebuttons.quickprint ) {
                 const var_name = window.SSE ? 'sse-settings-quick-print-button' :
                                     window.PE ? 'pe-settings-quick-print-button' :
-                                    window.PDFE ? 'pdfe-settings-quick-print-button' : 'de-settings-quick-print-button';
+                                    window.PDFE ? 'pdfe-settings-quick-print-button' :
+                                    window.VE ? 've-settings-quick-print-button' : 'de-settings-quick-print-button';
                 const is_btn_visible = Common.localStorage.getBool(var_name, false);
 
                 if ( titlebuttons.quickprint.visible != is_btn_visible ) {
@@ -368,25 +411,28 @@ define([
                     });
                 }
             }
-
-            _checkHelpAvailable.call(this);
         }
 
         const _onHidePreloader = function (mode) {
-            features.viewmode = !mode.isEdit;
+            features.viewmode = !window.PDFE ? !mode.isEdit : !!mode.isXpsViewer;
             features.viewmode && (features.btnhome = false);
             features.crypted = mode.isCrypted;
             native.execCommand('webapps:features', JSON.stringify(features));
 
             titlebuttons = {};
-            if ( mode.isEdit ) {
+            if ( !features.viewmode ) {
                 var header = webapp.getController('Viewport').getView('Common.Views.Header');
 
                 {
+                    let viewport;
+                    if ( native.getViewportSettings ) {
+                        viewport = native.getViewportSettings();
+                    }
+
                     header.btnHome = (new Common.UI.Button({
                         cls: 'btn-header',
                         iconCls: 'toolbar__icon icon--inverse btn-home',
-                        visible: false,
+                        visible: viewport && viewport.widgetType == 'window',
                         hint: Common.Locale.get('hintBtnHome', {name:"Common.Controllers.Desktop", default: 'Show Main window'}),
                         dataHint:'0',
                         dataHintDirection: 'right',
@@ -437,6 +483,13 @@ define([
 
                 if (!!header.btnRedo)
                     titlebuttons['redo'] = {btn: header.btnRedo};
+
+                if (!!header.btnStartOver) {
+                    titlebuttons['startover'] = {btn: header.btnStartOver};
+                }
+
+                if (!!header.btnQuickAccess)
+                    titlebuttons['quickaccess'] = {btn: header.btnQuickAccess};
 
                 for (var i in titlebuttons) {
                     titlebuttons[i].btn.options.signals = ['disabled'];
@@ -494,13 +547,18 @@ define([
             console.log('open recent');
         }
 
+        const _onChangeQuickAccess = function (props) {
+            native.execCommand("quickaccess:changed", JSON.stringify(props));
+        }
+
         const _extend_menu_file = function (args) {
             console.log('extend menu file')
 
             // if ( native.features.opentemplate )
             {
                 const filemenu = webapp.getController('LeftMenu').leftMenu.getMenu('file');
-                if ( filemenu.miNew.visible ) {
+                const cancreatenew = webapp.getController('Main').appOptions.canCreateNew;
+                if ( filemenu.miNew.visible && !!cancreatenew ) {
                     const miNewFromTemplate = new Common.UI.MenuItem({
                         el: $('<li id="fm-btn-create-fromtpl" class="fm-btn"></li>'),
                         action: 'create:fromtemplate',
@@ -536,16 +594,22 @@ define([
                         'modal:show': _onModalDialog.bind(this, 'open'),
                         'modal:close': _onModalDialog.bind(this, 'close'),
                         'modal:hide': _onModalDialog.bind(this, 'hide'),
-                        'uitheme:changed' : function (name) {
-                            if ( window.uitheme.is_theme_system() ) {
-                                native.execCommand("uitheme:changed", JSON.stringify({name:'theme-system'}));
-                            } else {
-                                var theme = Common.UI.Themes.get(name);
-                                if ( theme )
-                                    native.execCommand("uitheme:changed", JSON.stringify({name:name, type:theme.type}));
+                        'uitheme:changed' : function (name, caller) {
+                            if ( caller != 'native' ) {
+                                if (window.uitheme.is_theme_system()) {
+                                    native.execCommand("uitheme:changed", JSON.stringify({name: 'theme-system'}));
+                                } else {
+                                    var theme = Common.UI.Themes.get(name);
+                                    if (theme)
+                                        native.execCommand("uitheme:changed", JSON.stringify({
+                                            name: name,
+                                            type: theme.type
+                                        }));
+                                }
                             }
                         },
                         'hints:show': _onHintsShow.bind(this),
+                        'quickaccess:changed': _onChangeQuickAccess.bind(this),
                     });
 
                     webapp.addListeners({
@@ -560,7 +624,8 @@ define([
                                     menu.hide();
                                 } else
                                 if ( action == 'create:fromtemplate' ) {
-                                    native.execCommand('create:new', 'template:' + (!!window.SSE ? 'cell' : !!window.PE ? 'slide' : 'word'));
+                                    native.execCommand('create:new', 'template:' + (!!window.SSE ? 'cell' : !!window.PE ? 'slide' : !!window.VE ? 'visio' : !!window.PDFE ? 'form' :
+                                                            window.PDFE || config.isPDFForm ? 'form' : 'word'));
                                     menu.hide();
                                 }
                             },
@@ -576,6 +641,8 @@ define([
                         config.isFillFormApp = true;
                         $('#header-logo, .brand-logo').hide();
                     }
+
+                    _checkHelpAvailable.call(this);
                 }
             },
             process: function (opts) {
@@ -591,7 +658,8 @@ define([
                     } else
                     if ( opts == 'create:new' ) {
                         if (config.createUrl == 'desktop://create.new') {
-                            native.execCommand("create:new", !!window.SSE ? 'cell' : !!window.PE ? 'slide' : 'word');
+                            native.execCommand("create:new", !!window.SSE ? 'cell' : !!window.PE ? 'slide' :!!window.VE ? 'visio' :
+                                                    window.PDFE || config.isPDFForm ? 'form' : 'word');
                             return true;
                         }
                     }
@@ -602,6 +670,11 @@ define([
             requestClose: function () {
                 if ( config.isDesktopApp && !!native ) {
                     native.execCommand('editor:event', JSON.stringify({action:'file:close', url: config.customization.goback.url}));
+                }
+            },
+            removeRecent: function () {
+                if ( config.isDesktopApp && !!native ) {
+                    native.execCommand('recent:forget');
                 }
             },
             isActive: function () {
@@ -632,7 +705,8 @@ define([
                 if ( !!nativevars && nativevars.helpUrl ) {
                     var webapp = window.SSE ? 'spreadsheeteditor' :
                                     window.PE ? 'presentationeditor' :
-                                        window.PDFE ? 'pdfeditor' : 'documenteditor';
+                                        window.PDFE ? 'pdfeditor' :
+                                            window.VE ? 'visioeditor' : 'documenteditor';
                     return nativevars.helpUrl + '/' + webapp + '/main/resources/help';
                 }
 
@@ -677,6 +751,9 @@ define([
 
                 return false;
             },
+            uiRtlSupported: function () {
+                return nativevars && nativevars.rtl != undefined;
+            },
         };
     };
 
@@ -686,7 +763,8 @@ define([
     const FILE_DOCUMENT = 0x0040,
         FILE_PRESENTATION = 0x0080,
         FILE_SPREADSHEET = 0x0100,
-        FILE_CROSSPLATFORM = 0x0200;
+        FILE_CROSSPLATFORM = 0x0200,
+        FILE_DRAW = 0x4000;
 
     const utils = {};
     utils.defines = {}
@@ -712,6 +790,11 @@ define([
         FILE_DOCUMENT_DOC_FLAT: FILE_DOCUMENT + 0x0010,
         FILE_DOCUMENT_OFORM: FILE_DOCUMENT + 0x0015,
         FILE_DOCUMENT_DOCXF: FILE_DOCUMENT + 0x0016,
+        FILE_DOCUMENT_OFORM_PDF: FILE_DOCUMENT + 0x0017,
+        FILE_DOCUMENT_PAGES:    FILE_DOCUMENT + 0x0018,
+        FILE_DOCUMENT_HWP:      FILE_DOCUMENT + 0x0019,
+        FILE_DOCUMENT_HWPX:     FILE_DOCUMENT + 0x0020,
+        FILE_DOCUMENT_XML: FILE_DOCUMENT + 0x0030,
 
         FILE_PRESENTATION:      FILE_PRESENTATION,
         FILE_PRESENTATION_PPTX: FILE_PRESENTATION + 0x0001,
@@ -724,6 +807,7 @@ define([
         FILE_PRESENTATION_POTM: FILE_PRESENTATION + 0x0008,
         FILE_PRESENTATION_ODP_FLAT: FILE_PRESENTATION + 0x0009,
         FILE_PRESENTATION_OTP:  FILE_PRESENTATION + 0x000a,
+        FILE_PRESENTATION_KEY:  FILE_PRESENTATION + 0x000d,
 
         FILE_SPREADSHEET:       FILE_SPREADSHEET,
         FILE_SPREADSHEET_XLSX:  FILE_SPREADSHEET + 0x0001,
@@ -733,15 +817,25 @@ define([
         FILE_SPREADSHEET_XLSM:  FILE_SPREADSHEET + 0x0005,
         FILE_SPREADSHEET_XLTX:  FILE_SPREADSHEET + 0x0006,
         FILE_SPREADSHEET_XLTM:  FILE_SPREADSHEET + 0x0007,
-        FILE_SPREADSHEET_ODS_FLAT: FILE_SPREADSHEET + 0x0008,
-        FILE_SPREADSHEET_OTS:   FILE_SPREADSHEET + 0x0009,
+        FILE_SPREADSHEET_XLSB:  FILE_SPREADSHEET + 0x0008,
+        FILE_SPREADSHEET_ODS_FLAT: FILE_SPREADSHEET + 0x0009,
+        FILE_SPREADSHEET_OTS:   FILE_SPREADSHEET + 0x000a,
+        FILE_SPREADSHEET_NUMBERS: FILE_SPREADSHEET + 0x000d,
 
         FILE_CROSSPLATFORM:     FILE_CROSSPLATFORM,
         FILE_CROSSPLATFORM_PDF: FILE_CROSSPLATFORM + 0x0001,
         FILE_CROSSPLATFORM_SWF: FILE_CROSSPLATFORM + 0x0002,
         FILE_CROSSPLATFORM_DJVU: FILE_CROSSPLATFORM + 0x0003,
         FILE_CROSSPLATFORM_XPS: FILE_CROSSPLATFORM + 0x0004,
-        FILE_CROSSPLATFORM_PDFA: FILE_CROSSPLATFORM + 0x0009
+        FILE_CROSSPLATFORM_PDFA: FILE_CROSSPLATFORM + 0x0009,
+
+        FILE_DRAW:              FILE_DRAW,
+        FILE_DRAW_VSDX:         FILE_DRAW + 0x0001,
+        FILE_DRAW_VSSX:         FILE_DRAW + 0x0002,
+        FILE_DRAW_VSTX:         FILE_DRAW + 0x0003,
+        FILE_DRAW_VSDM:         FILE_DRAW + 0x0004,
+        FILE_DRAW_VSSM:         FILE_DRAW + 0x0005,
+        FILE_DRAW_VSTM:         FILE_DRAW + 0x0006,
     };
 
     utils.parseFileFormat = function(format) {
@@ -751,21 +845,34 @@ define([
             case utils.defines.FileFormat.FILE_DOCUMENT_ODT:        return 'odt';
             case utils.defines.FileFormat.FILE_DOCUMENT_RTF:        return 'rtf';
             case utils.defines.FileFormat.FILE_DOCUMENT_TXT:        return 'txt';
-            case utils.defines.FileFormat.FILE_DOCUMENT_HTML:       return 'htm';
+            case utils.defines.FileFormat.FILE_DOCUMENT_HTML:       return 'html';
             case utils.defines.FileFormat.FILE_DOCUMENT_MHT:        return 'mht';
             case utils.defines.FileFormat.FILE_DOCUMENT_EPUB:       return 'epub';
             case utils.defines.FileFormat.FILE_DOCUMENT_FB2:        return 'fb2';
+            case utils.defines.FileFormat.FILE_DOCUMENT_DOCM:       return 'docm';
             case utils.defines.FileFormat.FILE_DOCUMENT_DOTX:       return 'dotx';
             case utils.defines.FileFormat.FILE_DOCUMENT_OTT:        return 'ott';
             case utils.defines.FileFormat.FILE_DOCUMENT_OFORM:      return 'oform';
+            case utils.defines.FileFormat.FILE_DOCUMENT_OFORM_PDF:  return 'pdf';
             case utils.defines.FileFormat.FILE_DOCUMENT_DOCXF:      return 'docxf';
+            case utils.defines.FileFormat.FILE_DOCUMENT_ODT_FLAT:   return 'fodt';
+            case utils.defines.FileFormat.FILE_DOCUMENT_DOTM:       return 'dotm';
+            case utils.defines.FileFormat.FILE_DOCUMENT_XML:       return 'xml';
+            case utils.defines.FileFormat.FILE_DOCUMENT_PAGES:      return 'pages';
+            case utils.defines.FileFormat.FILE_DOCUMENT_HWP:        return 'hwpx';
+            case utils.defines.FileFormat.FILE_DOCUMENT_HWPX:       return 'hwp';
 
             case utils.defines.FileFormat.FILE_SPREADSHEET_XLS:     return 'xls';
             case utils.defines.FileFormat.FILE_SPREADSHEET_XLTX:    return 'xltx';
             case utils.defines.FileFormat.FILE_SPREADSHEET_XLSX:    return 'xlsx';
+            case utils.defines.FileFormat.FILE_SPREADSHEET_XLSB:    return 'xlsb';
             case utils.defines.FileFormat.FILE_SPREADSHEET_ODS:     return 'ods';
             case utils.defines.FileFormat.FILE_SPREADSHEET_CSV:     return 'csv';
             case utils.defines.FileFormat.FILE_SPREADSHEET_OTS:     return 'ots';
+            case utils.defines.FileFormat.FILE_SPREADSHEET_XLTM:    return 'xltm';
+            case utils.defines.FileFormat.FILE_SPREADSHEET_XLSM:    return 'xlsm';
+            case utils.defines.FileFormat.FILE_SPREADSHEET_ODS_FLAT:return 'fods';
+            case utils.defines.FileFormat.FILE_SPREADSHEET_NUMBERS: return 'numbers';
 
             case utils.defines.FileFormat.FILE_PRESENTATION_PPT:    return 'ppt';
             case utils.defines.FileFormat.FILE_PRESENTATION_POTX:   return 'potx';
@@ -773,11 +880,23 @@ define([
             case utils.defines.FileFormat.FILE_PRESENTATION_ODP:    return 'odp';
             case utils.defines.FileFormat.FILE_PRESENTATION_PPSX:   return 'ppsx';
             case utils.defines.FileFormat.FILE_PRESENTATION_OTP:    return 'otp';
+            case utils.defines.FileFormat.FILE_PRESENTATION_PPTM:   return 'pptm';
+            case utils.defines.FileFormat.FILE_PRESENTATION_PPSM:   return 'ppsm';
+            case utils.defines.FileFormat.FILE_PRESENTATION_POTM:   return 'potm';
+            case utils.defines.FileFormat.FILE_PRESENTATION_ODP_FLAT: return 'fodp';
+            case utils.defines.FileFormat.FILE_PRESENTATION_KEY:    return 'key';
 
             case utils.defines.FileFormat.FILE_CROSSPLATFORM_PDFA:
             case utils.defines.FileFormat.FILE_CROSSPLATFORM_PDF:   return 'pdf';
             case utils.defines.FileFormat.FILE_CROSSPLATFORM_DJVU:  return 'djvu';
             case utils.defines.FileFormat.FILE_CROSSPLATFORM_XPS:   return 'xps';
+
+            case utils.defines.FileFormat.FILE_DRAW_VSTX:
+            case utils.defines.FileFormat.FILE_DRAW_VSSX:
+            case utils.defines.FileFormat.FILE_DRAW_VSDM:
+            case utils.defines.FileFormat.FILE_DRAW_VSSM:
+            case utils.defines.FileFormat.FILE_DRAW_VSTM:
+            case utils.defines.FileFormat.FILE_DRAW_VSDX:           return 'vsdx';
         }
 
         return '';
@@ -805,6 +924,14 @@ define([
                     t == utils.defines.FileFormat.FILE_CROSSPLATFORM_PDF ||
                     t == utils.defines.FileFormat.FILE_CROSSPLATFORM_DJVU ||
                     t ==  utils.defines.FileFormat.FILE_CROSSPLATFORM_XPS;
+        } else
+        if ( window.VE ) {
+            return t == utils.defines.FileFormat.FILE_DRAW_VSDX ||
+                    t == utils.defines.FileFormat.FILE_DRAW_VSDM ||
+                    t == utils.defines.FileFormat.FILE_DRAW_VSTX ||
+                    t == utils.defines.FileFormat.FILE_DRAW_VSTM ||
+                    t == utils.defines.FileFormat.FILE_DRAW_VSSX ||
+                    t ==  utils.defines.FileFormat.FILE_DRAW_VSSM;
         }
 
         return false;

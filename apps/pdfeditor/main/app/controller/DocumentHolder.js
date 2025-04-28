@@ -1,5 +1,5 @@
 /*
- * (c) Copyright Ascensio System SIA 2010-2023
+ * (c) Copyright Ascensio System SIA 2010-2024
  *
  * This program is a free software product. You can redistribute it and/or
  * modify it under the terms of the GNU Affero General Public License (AGPL)
@@ -34,10 +34,28 @@
  *
  *  DocumentHolder controller
  *
- *  Created by Alexander Yuzhin on 1/15/14
- *  Copyright (c) 2018 Ascensio System SIA. All rights reserved.
+ *  Created on 1/15/14
  *
  */
+
+var c_paragraphLinerule = {
+    LINERULE_LEAST: 0,
+    LINERULE_AUTO: 1,
+    LINERULE_EXACT: 2
+};
+
+var c_paragraphTextAlignment = {
+    RIGHT: 0,
+    LEFT: 1,
+    CENTERED: 2,
+    JUSTIFIED: 3
+};
+
+var c_paragraphSpecial = {
+    NONE_SPECIAL: 0,
+    FIRST_LINE: 1,
+    HANGING: 2
+};
 
 define([
     'core',
@@ -54,12 +72,6 @@ define([
 
         initialize: function() {
             //
-            this.addListeners({
-                'DocumentHolder': {
-                    'createdelayedelements': this.createDelayedElements,
-                    'equation:callback': this.equationCallback
-                }
-            });
 
             var me = this;
 
@@ -67,11 +79,16 @@ define([
             me.usertips = [];
             me.fastcoauthtips = [];
             me._isDisabled = false;
-            me._state = {};
+            me._state = {initEditorEvents: true};
             me.mode = {};
             me.mouseMoveData = null;
             me.isTooltipHiding = false;
             me.lastMathTrackBounds = [];
+            me.showMathTrackOnLoad = false;
+            me.lastTextBarBounds = [];
+            me.lastAnnotBarBounds = [];
+            me.lastAnnotBarOnTop = true;
+            me.lastAnnotSelBarOnTop = true;
 
             me.screenTip = {
                 toolTip: new Common.UI.Tooltip({
@@ -96,7 +113,7 @@ define([
                 eyedropperColor: null,
                 tipInterval: null,
                 isTipVisible: false
-            }
+            };
             me.userTooltip = true;
             me.wrapEvents = {
                 userTipMousover: _.bind(me.userTipMousover, me),
@@ -145,35 +162,15 @@ define([
                     me.onDocumentHolderResize();
                 }
             });
+            Common.NotificationCenter.on('script:loaded', _.bind(me.createPostLoadElements, me));
         },
 
         setApi: function(o) {
             this.api = o;
-
             if (this.api) {
-                this.api.asc_registerCallback('asc_onContextMenu',                  _.bind(this.onContextMenu, this));
-                this.api.asc_registerCallback('asc_onMouseMoveStart',               _.bind(this.onMouseMoveStart, this));
-                this.api.asc_registerCallback('asc_onMouseMoveEnd',                 _.bind(this.onMouseMoveEnd, this));
-
-                //hyperlink
-                this.api.asc_registerCallback('asc_onHyperlinkClick',               _.bind(this.onHyperlinkClick, this));
-                this.api.asc_registerCallback('asc_onMouseMove',                    _.bind(this.onMouseMove, this));
-
-                if (this.mode.isEdit === true) {
-                    this.api.asc_registerCallback('asc_onHideEyedropper',               _.bind(this.hideEyedropper, this));
-                    this.api.asc_registerCallback('asc_onShowPDFFormsActions',          _.bind(this.onShowFormsPDFActions, this));
-                }
-                this.api.asc_registerCallback('asc_onCoAuthoringDisconnect',        _.bind(this.onCoAuthoringDisconnect, this));
-                Common.NotificationCenter.on('api:disconnect',                      _.bind(this.onCoAuthoringDisconnect, this));
-
-                this.api.asc_registerCallback('asc_onShowForeignCursorLabel',       _.bind(this.onShowForeignCursorLabel, this));
-                this.api.asc_registerCallback('asc_onHideForeignCursorLabel',       _.bind(this.onHideForeignCursorLabel, this));
-                this.api.asc_registerCallback('asc_onFocusObject',                  _.bind(this.onFocusObject, this));
-                this.api.asc_registerCallback('onPluginContextMenu',                _.bind(this.onPluginContextMenu, this));
-
+                (this.mode.isEdit === true) && this.api.asc_registerCallback('asc_onCountPages',                   _.bind(this.onCountPages, this));
                 this.documentHolder.setApi(this.api);
             }
-
             return this;
         },
 
@@ -187,12 +184,13 @@ define([
             this.documentHolder.setMode(m);
         },
 
-        createDelayedElements: function(view, type) {
-            var me = this;
-
-            me.documentHolder.menuPDFViewCopy.on('click', _.bind(me.onCutCopyPaste, me));
-            me.documentHolder.menuAddComment.on('click', _.bind(me.addComment, me));
+        createPostLoadElements: function() {
+            this.setEvents();
+            this.applyEditorMode();
+            this.showMathTrackOnLoad && this.onShowMathTrack(this.lastMathTrackBounds);
         },
+
+        createDelayedElements: function(view, type) {},
 
         getView: function (name) {
             return !name ?
@@ -234,23 +232,22 @@ define([
                 }, 10);
 
                 me.documentHolder.currentMenu = menu;
-                me.api.onPluginContextMenuShow && me.api.onPluginContextMenuShow();
+                me.api.onPluginContextMenuShow && me.api.onPluginContextMenuShow(event);
             }
         },
 
-        fillViewMenuProps: function(selectedElements) {
-            // if (!selectedElements || !_.isArray(selectedElements)) return;
+        fillViewMenuProps: function(selectedElements) {},
 
-            var documentHolder = this.documentHolder;
-            if (!documentHolder.viewPDFModeMenu)
-                documentHolder.createDelayedElementsPDFViewer();
-            return {menu_to_show: documentHolder.viewPDFModeMenu, menu_props: {}};
-        },
+        fillPDFEditMenuProps: function(selectedElements) {},
+
+        applyEditorMode: function() {},
+
+        fillFormsMenuProps: function(selectedElements) {},
 
         showObjectMenu: function(event, docElement, eOpts){
             var me = this;
             if (me.api){
-                var obj = me.fillViewMenuProps();
+                var obj = me.mode && me.mode.isRestrictedEdit ? (event.get_Type() == 0 ? me.fillFormsMenuProps(me.api.getSelectedElements()) : null) : (me.mode && me.mode.isEdit && me.mode.isPDFEdit ? me.fillPDFEditMenuProps(me.api.getSelectedElements()) : me.fillViewMenuProps(me.api.getSelectedElements()));
                 if (obj) me.showPopupMenu(obj.menu_to_show, obj.menu_props, event, docElement, eOpts);
             }
         },
@@ -265,7 +262,10 @@ define([
 
             var me = this;
             _.delay(function(){
-                me.showObjectMenu.call(me, event);
+                if (event.get_Type() == Asc.c_oAscPdfContextMenuTypes.Thumbnails) {
+                    me.mode && me.mode.isEdit && me.mode.isPDFEdit && me.showPopupMenu.call(me, me.documentHolder.pageMenu, {isPageSelect: event.get_IsPageSelect(), pageNum: event.get_PageNum()}, event);
+                } else
+                    me.showObjectMenu.call(me, event);
             },10);
         },
 
@@ -273,12 +273,30 @@ define([
             var me = this,
                 currentMenu = me.documentHolder.currentMenu;
             if (currentMenu && currentMenu.isVisible()){
-                var obj = me.fillViewMenuProps(selectedElements);
+                var obj = me.mode && me.mode.isRestrictedEdit ? me.fillFormsMenuProps(selectedElements) : (me.mode && me.mode.isEdit && me.mode.isPDFEdit ? me.fillPDFEditMenuProps(selectedElements) : me.fillViewMenuProps(selectedElements));
                 if (obj) {
                     if (obj.menu_to_show===currentMenu) {
                         currentMenu.options.initMenu(obj.menu_props);
                         currentMenu.alignPosition();
                     }
+                }
+            }
+            if (this.mode && this.mode.isEdit && this.mode.isPDFEdit) {
+                var i = -1,
+                    in_equation = false,
+                    locked = false;
+                while (++i < selectedElements.length) {
+                    var type = selectedElements[i].get_ObjectType();
+                    if (type === Asc.c_oAscTypeSelectElement.Math) {
+                        in_equation = true;
+                    } else if (type === Asc.c_oAscTypeSelectElement.Paragraph) {
+                        var value = selectedElements[i].get_ObjectValue();
+                        value && (locked = locked || value.get_Locked());
+                    }
+                }
+                if (in_equation) {
+                    this._state.equationLocked = locked;
+                    this.disableEquationBar();
                 }
             }
         },
@@ -336,8 +354,6 @@ define([
 
                 if (key == Common.UI.Keys.ESC) {
                     Common.UI.Menu.Manager.hideAll();
-                    if (!Common.UI.HintManager.isHintVisible())
-                        Common.NotificationCenter.trigger('leftmenu:change', 'hide');
                 }
             }
         },
@@ -345,8 +361,8 @@ define([
         onDocumentHolderResize: function(e){
             var me = this;
             me._XY = [
-                me.documentHolder.cmpEl.offset().left - $(window).scrollLeft(),
-                me.documentHolder.cmpEl.offset().top - $(window).scrollTop()
+                Common.Utils.getOffset(me.documentHolder.cmpEl).left - $(window).scrollLeft(),
+                Common.Utils.getOffset(me.documentHolder.cmpEl).top - $(window).scrollTop()
             ];
             me._Height = me.documentHolder.cmpEl.height();
             me._Width = me.documentHolder.cmpEl.width();
@@ -371,7 +387,7 @@ define([
                     }
                 });
                 meEl.on('mousedown', function(e){
-                    if (e.target.localName == 'canvas')
+                    if (e.target.localName == 'canvas' && $(e.target).closest('[type=menuitem]').length<1)
                         Common.UI.Menu.Manager.hideAll();
                 });
 
@@ -463,65 +479,6 @@ define([
             /** coauthoring end **/
         },
 
-        onHyperlinkClick: function(url) {
-            if (url) {
-                var type = this.api.asc_getUrlType(url);
-                if (type===AscCommon.c_oAscUrlType.Http || type===AscCommon.c_oAscUrlType.Email)
-                    window.open(url);
-                else
-                    Common.UI.warning({
-                        msg: this.documentHolder.txtWarnUrl,
-                        buttons: ['yes', 'no'],
-                        primary: 'yes',
-                        callback: function(btn) {
-                            (btn == 'yes') && window.open(url);
-                        }
-                    });
-            }
-        },
-
-        onShowForeignCursorLabel: function(UserId, X, Y, color) {
-            if (!this.isUserVisible(UserId)) return;
-
-            /** coauthoring begin **/
-            var me = this;
-            var src;
-            for (var i=0; i<me.fastcoauthtips.length; i++) {
-                if (me.fastcoauthtips[i].attr('userid') == UserId) {
-                    src = me.fastcoauthtips[i];
-                    break;
-                }
-            }
-
-            if (!src) {
-                src = $(document.createElement("div"));
-                src.addClass('username-tip');
-                src.attr('userid', UserId);
-                src.css({height: me._TtHeight + 'px', position: 'absolute', zIndex: '900', display: 'none', 'pointer-events': 'none',
-                    'background-color': '#'+Common.Utils.ThemeColor.getHexColor(color.get_r(), color.get_g(), color.get_b())});
-                src.text(me.getUserName(UserId));
-                $('#id_main_view').append(src);
-                me.fastcoauthtips.push(src);
-                src.fadeIn(150);
-            }
-            src.css({top: (Y-me._TtHeight) + 'px', left: X + 'px'});
-            /** coauthoring end **/
-        },
-
-        onHideForeignCursorLabel: function(UserId) {
-            /** coauthoring begin **/
-            var me = this;
-            for (var i=0; i<me.fastcoauthtips.length; i++) {
-                if (me.fastcoauthtips[i].attr('userid') == UserId) {
-                    var src = me.fastcoauthtips[i];
-                    me.fastcoauthtips[i].fadeOut(150, function(){src.remove()});
-                    me.fastcoauthtips.splice(i, 1);
-                    break;
-                }
-            }
-            /** coauthoring end **/
-        },
-
         hideEyedropper: function () {
             if (this.eyedropperTip.isVisible) {
                 this.eyedropperTip.isVisible = false;
@@ -567,163 +524,7 @@ define([
             }
         },
 
-        onMouseMove: function(moveData) {
-            var me = this,
-                cmpEl = me.documentHolder.cmpEl,
-                screenTip = me.screenTip;
-            if (me._XY === undefined) {
-                me._XY = [
-                    cmpEl.offset().left - $(window).scrollLeft(),
-                    cmpEl.offset().top - $(window).scrollTop()
-                ];
-                me._Height = cmpEl.height();
-                me._Width = cmpEl.width();
-                me._BodyWidth = $('body').width();
-            }
-
-            if (moveData) {
-                var showPoint, ToolTip,
-                    type = moveData.get_Type();
-
-                if (type==Asc.c_oAscMouseMoveDataTypes.Hyperlink || type==Asc.c_oAscMouseMoveDataTypes.Eyedropper) {
-                    if (me.isTooltipHiding) {
-                        me.mouseMoveData = moveData;
-                        return;
-                    }
-
-                    if (type==Asc.c_oAscMouseMoveDataTypes.Hyperlink) {
-                        var hyperProps = moveData.get_Hyperlink();
-                        if (!hyperProps) return;
-                        ToolTip = (_.isEmpty(hyperProps.get_ToolTip())) ? hyperProps.get_Value() : hyperProps.get_ToolTip();
-                        if (ToolTip.length>256)
-                            ToolTip = ToolTip.substr(0, 256) + '...';
-                    } else if (type==Asc.c_oAscMouseMoveDataTypes.Eyedropper) {
-                        if (me.eyedropperTip.isTipVisible) {
-                            me.eyedropperTip.isTipVisible = false;
-                            me.eyedropperTip.toolTip.hide();
-                        }
-
-                        var color = moveData.get_EyedropperColor().asc_getColor(),
-                            r = color.get_r(),
-                            g = color.get_g(),
-                            b = color.get_b(),
-                            hex = Common.Utils.ThemeColor.getHexColor(r,g,b);
-                        if (!me.eyedropperTip.eyedropperColor) {
-                            var colorEl = $(document.createElement("div"));
-                            colorEl.addClass('eyedropper-color');
-                            colorEl.appendTo(document.body);
-                            me.eyedropperTip.eyedropperColor = colorEl;
-                            $('#id_main_view').on('mouseleave', _.bind(me.hideEyedropper, me));
-                        }
-                        me.eyedropperTip.eyedropperColor.css({
-                            backgroundColor: '#' + hex,
-                            left: (moveData.get_X() + me._XY[0] + 23) + 'px',
-                            top: (moveData.get_Y() + me._XY[1] - 53) + 'px'
-                        });
-                        me.eyedropperTip.isVisible = true;
-
-                        if (me.eyedropperTip.tipInterval) {
-                            clearInterval(me.eyedropperTip.tipInterval);
-                        }
-                        me.eyedropperTip.tipInterval = setInterval(function () {
-                            clearInterval(me.eyedropperTip.tipInterval);
-                            if (me.eyedropperTip.isVisible) {
-                                ToolTip = '<div>RGB(' + r + ',' + g + ',' + b + ')</div>' +
-                                    '<div>' + moveData.get_EyedropperColor().asc_getName() + '</div>';
-                                me.eyedropperTip.toolTip.setTitle(ToolTip);
-                                me.eyedropperTip.isTipVisible = true;
-                                me.eyedropperTip.toolTip.show([-10000, -10000]);
-                                me.eyedropperTip.tipWidth = me.eyedropperTip.toolTip.getBSTip().$tip.width();
-                                showPoint = [moveData.get_X(), moveData.get_Y()];
-                                showPoint[1] += (me._XY[1] - 57);
-                                showPoint[0] += (me._XY[0] + 58);
-                                if (showPoint[0] + me.eyedropperTip.tipWidth > me._BodyWidth ) {
-                                    showPoint[0] = showPoint[0] - me.eyedropperTip.tipWidth - 40;
-                                }
-                                me.eyedropperTip.toolTip.getBSTip().$tip.css({
-                                    top: showPoint[1] + 'px',
-                                    left: showPoint[0] + 'px'
-                                });
-                            }
-                        }, 800);
-                        me.eyedropperTip.isHidden = false;
-                        return;
-                    }
-
-                    var recalc = false;
-                    screenTip.isHidden = false;
-
-                    ToolTip = Common.Utils.String.htmlEncode(ToolTip);
-
-                    if (screenTip.tipType !== type || screenTip.tipLength !== ToolTip.length || screenTip.strTip.indexOf(ToolTip)<0 ) {
-                        screenTip.toolTip.setTitle((type==Asc.c_oAscMouseMoveDataTypes.Hyperlink) ? (ToolTip + '<br><b>' + Common.Utils.String.platformKey('Ctrl', me.documentHolder.txtPressLink) + '</b>') : ToolTip);
-                        screenTip.tipLength = ToolTip.length;
-                        screenTip.strTip = ToolTip;
-                        screenTip.tipType = type;
-                        recalc = true;
-                    }
-
-                    showPoint = [moveData.get_X(), moveData.get_Y()];
-                    showPoint[1] += (me._XY[1]-15);
-                    showPoint[0] += (me._XY[0]+5);
-
-                    if (!screenTip.isVisible || recalc) {
-                        screenTip.isVisible = true;
-                        screenTip.toolTip.show([-10000, -10000]);
-                    }
-
-                    if ( recalc ) {
-                        screenTip.tipHeight = screenTip.toolTip.getBSTip().$tip.height();
-                        screenTip.tipWidth = screenTip.toolTip.getBSTip().$tip.width();
-                    }
-
-                    recalc = false;
-                    if (showPoint[0] + screenTip.tipWidth > me._BodyWidth ) {
-                        showPoint[0] = me._BodyWidth - screenTip.tipWidth;
-                        recalc = true;
-                    }
-                    if (showPoint[1] - screenTip.tipHeight < 0) {
-                        showPoint[1] = (recalc) ? showPoint[1]+30 : 0;
-                    } else
-                        showPoint[1] -= screenTip.tipHeight;
-
-                    screenTip.toolTip.getBSTip().$tip.css({top: showPoint[1] + 'px', left: showPoint[0] + 'px'});
-                }
-                /** coauthoring begin **/
-                else if (moveData.get_Type()==Asc.c_oAscMouseMoveDataTypes.LockedObject && me.mode.isEdit && me.isUserVisible(moveData.get_UserId())) { // 2 - locked object
-                    var src;
-                    if (me.usertipcount >= me.usertips.length) {
-                        src = $(document.createElement("div"));
-                        src.addClass('username-tip');
-                        src.css({height: me._TtHeight + 'px', position: 'absolute', zIndex: '900', visibility: 'visible'});
-                        $(document.body).append(src);
-                        if (me.userTooltip) {
-                            src.on('mouseover', me.wrapEvents.userTipMousover);
-                            src.on('mouseout', me.wrapEvents.userTipMousout);
-                        }
-
-                        me.usertips.push(src);
-                    }
-                    src = me.usertips[me.usertipcount];
-                    me.usertipcount++;
-
-                    ToolTip = me.getUserName(moveData.get_UserId());
-
-                    showPoint = [moveData.get_X()+me._XY[0], moveData.get_Y()+me._XY[1]];
-                    var maxwidth = showPoint[0];
-                    showPoint[0] = me._BodyWidth - showPoint[0];
-                    showPoint[1] -= ((moveData.get_LockedObjectType()==2) ? me._TtHeight : 0);
-
-                    if (showPoint[1] > me._XY[1] && showPoint[1]+me._TtHeight < me._XY[1]+me._Height)  {
-                        src.text(ToolTip);
-                        src.css({visibility: 'visible', top: showPoint[1] + 'px', right: showPoint[0] + 'px', 'max-width': maxwidth + 'px'});
-                    } else {
-                        src.css({visibility: 'hidden'});
-                    }
-                }
-                /** coauthoring end **/
-            }
-        },
+        onMouseMove: function(moveData) {},
 
         onCoAuthoringDisconnect: function() {
             this.mode.isEdit = false;
@@ -738,8 +539,8 @@ define([
             var me = this,
                 cmpEl = me.documentHolder.cmpEl;
             me._XY = [
-                cmpEl.offset().left - $(window).scrollLeft(),
-                cmpEl.offset().top  - $(window).scrollTop()
+                Common.Utils.getOffset(cmpEl).left - $(window).scrollLeft(),
+                Common.Utils.getOffset(cmpEl).top  - $(window).scrollTop()
             ];
             me._Height = cmpEl.height();
             me._Width = cmpEl.width();
@@ -754,164 +555,39 @@ define([
                 var controller = PDFE.getController('Common.Controllers.Comments');
                 if (controller) {
                     controller.addDummyComment();
+                    item && item.isFromBar && this.api.SetShowTextSelectPanel(false);
                 }
             }
         },
 
-        onCutCopyPaste: function(item, e) {
-            var me = this;
-            if (me.api) {
-                var res =  (item.value == 'cut') ? me.api.Cut() : ((item.value == 'copy') ? me.api.Copy() : me.api.Paste());
-                if (!res) {
-                    if (!Common.localStorage.getBool("pdfe-hide-copywarning")) {
-                        (new Common.Views.CopyWarningDialog({
-                            handler: function(dontshow) {
-                                if (dontshow) Common.localStorage.setItem("pdfe-hide-copywarning", 1);
-                                me.editComplete();
-                            }
-                        })).show();
-                    }
-                }
-            }
-            me.editComplete();
+        onCountPages: function(count) {
+            this.documentHolder && (this.documentHolder._pagesCount = count);
         },
 
-        onUndo: function () {
-            this.api.Undo();
+        onDialogAddHyperlink: function() {},
+
+        onShowMathTrack: function() {},
+
+        onHideMathTrack: function() {},
+
+        onHideTextBar: function() {},
+
+        disableEquationBar: function() {},
+
+        onHideAnnotBar: function() {},
+
+        onHideAnnotSelectBar: function() {},
+
+        editText: function() {
+            this.mode && !this.mode.isPDFEdit && Common.NotificationCenter.trigger('pdf:mode-apply', 'edit');
+            this.api && this.api.asc_EditPage();
         },
 
-        onPrintSelection: function(item){
-            if (this.api){
-                var printopt = new Asc.asc_CAdjustPrint();
-                printopt.asc_setPrintType(Asc.c_oAscPrintType.Selection);
-                var opts = new Asc.asc_CDownloadOptions(null, Common.Utils.isChrome || Common.Utils.isOpera || Common.Utils.isGecko && Common.Utils.firefoxVersion>86); // if isChrome or isOpera == true use asc_onPrintUrl event
-                opts.asc_setAdvancedOptions(printopt);
-                this.api.asc_Print(opts);
-                this.editComplete();
-                Common.component.Analytics.trackEvent('DocumentHolder', 'Print Selection');
-            }
-        },
-
-        onSignatureClick: function(item) {
-            var datavalue = item.cmpEl.attr('data-value');
-            switch (item.value) {
-                case 0:
-                    Common.NotificationCenter.trigger('protect:sign', datavalue); //guid
-                    break;
-                case 1:
-                    this.api.asc_ViewCertificate(datavalue); //certificate id
-                    break;
-                case 2:
-                    var docProtection = this.documentHolder._docProtection;
-                    Common.NotificationCenter.trigger('protect:signature', 'visible', this._isDisabled || docProtection.isReadOnly || docProtection.isFormsOnly || docProtection.isCommentsOnly, datavalue);//guid, can edit settings for requested signature
-                    break;
-                case 3:
-                    var me = this;
-                    Common.UI.warning({
-                        title: this.documentHolder.notcriticalErrorTitle,
-                        msg: this.documentHolder.txtRemoveWarning,
-                        buttons: ['ok', 'cancel'],
-                        primary: 'ok',
-                        callback: function(btn) {
-                            if (btn == 'ok') {
-                                me.api.asc_RemoveSignature(datavalue);
-                            }
-                        }
-                    });
-                    break;
-            }
-        },
-
-        saveAsPicture: function() {
-            if(this.api) {
-                this.api.asc_SaveDrawingAsPicture();
-            }
-        },
-
-        onPluginContextMenu: function(data) {
-            if (data && data.length>0 && this.documentHolder && this.documentHolder.currentMenu && this.documentHolder.currentMenu.isVisible()){
-                this.documentHolder.updateCustomItems(this.documentHolder.currentMenu, data);
-            }
-        },
-
-        onShowFormsPDFActions: function(obj, x, y) {
-            switch (obj.type) {
-                case AscPDF.FIELD_TYPES.combobox:
-                    this.onShowListActionsPDF(obj, x, y);
-                    break;
-            }
-        },
-
-        onShowListActionsPDF: function(obj) {
-            var isForm = true,
-                cmpEl = this.documentHolder.cmpEl,
-                menu = this.listControlMenu,
-                menuContainer = menu ? cmpEl.find(Common.Utils.String.format('#menu-container-{0}', menu.id)) : null,
-                me = this;
-
-            me._listObj = obj;
-            this._fromShowContentControls = true;
-            Common.UI.Menu.Manager.hideAll();
-
-            if (!menu) {
-                this.listControlMenu = menu = new Common.UI.Menu({
-                    maxHeight: 207,
-                    menuAlign: 'tr-bl',
-                    items: []
-                });
-                menu.on('item:click', function(menu, item) {
-                    setTimeout(function(){
-                        (item.value!==-1) && me.api.asc_SelectPDFFormListItem(item.value);
-                    }, 1);
-                });
-
-                // Prepare menu container
-                if (!menuContainer || menuContainer.length < 1) {
-                    menuContainer = $(Common.Utils.String.format('<div id="menu-container-{0}" style="position: absolute; z-index: 10000;"><div class="dropdown-toggle" data-toggle="dropdown"></div></div>', menu.id));
-                    cmpEl.append(menuContainer);
-                }
-
-                menu.render(menuContainer);
-                menu.cmpEl.attr({tabindex: "-1"});
-                menu.on('hide:after', function(){
-                    me.listControlMenu.removeAll();
-                    if (!me._fromShowContentControls)
-                        me.api.asc_UncheckContentControlButtons();
-                });
-            }
-
-            var options = obj.getOptions(),
-                count = options.length;
-            for (var i=0; i<count; i++) {
-                menu.addItem(new Common.UI.MenuItem({
-                    caption     : Array.isArray(options[i]) ? options[i][0] : options[i],
-                    value       : i,
-                    template    : _.template([
-                        '<a id="<%= id %>" style="<%= style %>" tabindex="-1" type="menuitem">',
-                        '<%= Common.Utils.String.htmlEncode(caption) %>',
-                        '</a>'
-                    ].join(''))
-                }));
-            }
-            if (!isForm && menu.items.length<1) {
-                menu.addItem(new Common.UI.MenuItem({
-                    caption     : this.documentHolder.txtEmpty,
-                    value       : -1
-                }));
-            }
-
-            var pagepos = obj.getPagePos(),
-                oGlobalCoords = AscPDF.GetGlobalCoordsByPageCoords(pagepos.x + pagepos.w, pagepos.y + pagepos.h, obj.getPage(), true);
-
-            menuContainer.css({left: oGlobalCoords.X, top : oGlobalCoords.Y});
-            menuContainer.attr('data-value', 'prevent-canvas-click');
-            this._preventClick = true;
-            menu.show();
-
-            _.delay(function() {
-                menu.cmpEl.focus();
-            }, 10);
-            this._fromShowContentControls = false;
+        clearSelection: function() {
+            this.onHideMathTrack();
+            this.onHideTextBar();
+            this.onHideAnnotBar();
+            this.onHideAnnotSelectBar();
         },
 
         editComplete: function() {

@@ -2,7 +2,7 @@
 @import '../../../../common/mobile/resources/less/_mixins.less';
 @import '../../../../common/mobile/resources/less/colors-table.less';
 @import '../../../../common/mobile/resources/less/colors-table-dark.less';
-@import './app.rtl.less';
+@import './app-rtl.less';
 
 @brandColor: var(--brand-word);
 
@@ -36,6 +36,7 @@
 @import '../../../../common/mobile/resources/less/search.less';
 @import '../../../../common/mobile/resources/less/contextmenu.less';
 @import '../../../../common/mobile/resources/less/comments.less';
+@import '../../../../common/mobile/resources/less/draw.less';
 @import './app-material.less';
 @import './app-ios.less';
 @import './icons-ios.less';
@@ -260,6 +261,7 @@
         z-index: 100;
         top: 40px;
         z-index: 1000;
+        right: 0;
     }
 }
 
@@ -380,5 +382,14 @@
     opacity: 0;
     transition: opacity 300ms;
 }
-
+//
+#btn-submit-form {
+    background-color: @toolbar-icons;
+    color: @toolbar-background;
+    height: 2em;
+    border-radius: 1em;
+    padding-left: 15px;
+    padding-right: 15px;
+    margin-right: 5px;
+}
 
